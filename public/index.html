@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pumpkin Classic Scores &amp; Schedule</title>
+  <meta name="description" content="Schedule, scores and standings for the 24th Annual Pumpkin Classic Showcase, hosted by the Seneca Valley Lacrosse Association.">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="hero">
+    <span class="eyebrow">24th Annual Pumpkin Classic Showcase</span>
+    <h1>Scores &amp; Schedule</h1>
+    <p class="when">Sunday, October 18, 2026</p>
+    <p>Seneca Valley High School Campus · Harmony, PA</p>
+  </header>
+
+  <div class="wrap">
+    <div class="controls">
+      <div class="tabs" role="tablist" aria-label="View">
+        <button class="tab" role="tab" id="tab-schedule" aria-selected="true" data-tab="schedule">Schedule &amp; Scores</button>
+        <button class="tab" role="tab" id="tab-standings" aria-selected="false" data-tab="standings">Standings</button>
+      </div>
+      <div class="filters" id="filters"></div>
+    </div>
+    <div class="status-line" id="status"></div>
+    <main id="app" aria-live="polite"><p class="empty">Loading the schedule…</p></main>
+    <p class="staff"><a class="btn alt" href="/score" target="_top">Staff sign in</a></p>
+    <p class="note">Scores are entered by tournament staff as games are played, usually within a few minutes, and are unofficial. This page refreshes on its own.</p>
+  </div>
+
+  <script type="module" src="/view.js"></script>
+</body>
+</html>

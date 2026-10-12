@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Pumpkin Classic Scorekeeper</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="hero">
+    <span class="eyebrow">Tournament staff only</span>
+    <h1>Scorekeeper</h1>
+    <p>Pumpkin Classic Showcase · October 18, 2026</p>
+  </header>
+
+  <div class="wrap">
+    <section class="gate" id="gate">
+      <h2>Sign in</h2>
+      <p>Enter the scorekeeper passcode you were given.</p>
+      <form id="gate-form">
+        <label for="pass" class="filter-label">Passcode</label>
+        <input id="pass" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" required>
+        <p class="err" id="gate-err" role="alert"></p>
+        <button class="btn block" type="submit">Sign in</button>
+      </form>
+    </section>
+
+    <div id="board" hidden>
+      <div class="who"><span id="count"></span><button id="signout" type="button">Sign out</button></div>
+      <div class="tabs view-tabs" role="tablist" aria-label="Scorekeeper sections">
+        <button class="tab" role="tab" type="button" data-view="scores" aria-selected="true">Scores</button>
+        <button class="tab" role="tab" type="button" data-view="standings" aria-selected="false">Standings</button>
+        <button class="tab" role="tab" type="button" data-view="edit" aria-selected="false">Edit schedule</button>
+      </div>
+      <div class="controls">
+        <div class="filters" id="filters"></div>
+      </div>
+      <div class="status-line" id="status"></div>
+      <main id="app" aria-live="polite"></main>
+    </div>
+  </div>
+
+  <dialog id="editor" aria-labelledby="ed-title">
+    <form class="sheet" id="ed-form" method="dialog">
+      <h3 id="ed-title"></h3>
+      <p class="sub" id="ed-sub"></p>
+      <div class="stepper-row"><span class="tn" id="ed-a"></span><div class="stepper"><button type="button" data-step="a:-1" aria-label="Subtract a goal">−</button><input id="ed-ain" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="Score"><button type="button" data-step="a:1" aria-label="Add a goal">+</button></div></div>
+      <div class="stepper-row"><span class="tn" id="ed-b"></span><div class="stepper"><button type="button" data-step="b:-1" aria-label="Subtract a goal">−</button><input id="ed-bin" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="Score"><button type="button" data-step="b:1" aria-label="Add a goal">+</button></div></div>
+      <div class="seg" role="radiogroup" aria-label="Game status">
+        <label><input type="radio" name="status" value="scheduled"><span>Not started</span></label>
+        <label><input type="radio" name="status" value="live"><span>In progress</span></label>
+        <label><input type="radio" name="status" value="final"><span>Final</span></label>
+      </div>
+      <p class="err" id="ed-err" role="alert"></p>
+      <div class="actions">
+        <button class="btn alt" type="button" id="ed-cancel">Cancel</button>
+        <button class="btn" type="submit" id="ed-save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="gdlg" aria-labelledby="g-title">
+    <form class="sheet" id="g-form" method="dialog">
+      <h3 id="g-title"></h3>
+      <p class="sub" id="g-sub"></p>
+      <label class="fld" id="g-divrow" hidden><span>Division</span><select id="g-div"><option value="Varsity">Varsity</option><option value="JV">JV</option></select></label>
+      <label class="fld"><span>Team A</span><select id="g-a"></select></label>
+      <label class="fld"><span>Team B</span><select id="g-b"></select></label>
+      <label class="fld"><span>Time</span><select id="g-slot"></select></label>
+      <label class="fld"><span>Field</span><select id="g-field"></select></label>
+      <label class="fld"><span>Score table duty</span><input id="g-table" type="text" maxlength="40" autocomplete="off"></label>
+      <label class="chk" id="g-cancelrow"><input type="checkbox" id="g-cancel"> Game cancelled</label>
+      <label class="fld"><span>Note (optional)</span><input id="g-note" type="text" maxlength="80" autocomplete="off" placeholder="e.g. Forfeit &ndash; Plum"></label>
+      <p class="err" id="g-err" role="alert"></p>
+      <div class="actions">
+        <button class="btn alt" type="button" id="g-close">Close</button>
+        <button class="btn" type="submit" id="g-save">Save</button>
+        <button class="btn danger full" type="button" id="g-reset" hidden>Reset this game to the original schedule</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="tdlg" aria-labelledby="t-title">
+    <form class="sheet" id="t-form" method="dialog">
+      <h3 id="t-title"></h3>
+      <p class="sub" id="t-sub"></p>
+      <label class="fld"><span>Team name</span><input id="t-name" type="text" maxlength="40" autocomplete="off" required></label>
+      <p class="hint" id="t-hint"></p>
+      <p class="err" id="t-err" role="alert"></p>
+      <div class="actions">
+        <button class="btn alt" type="button" id="t-close">Close</button>
+        <button class="btn" type="submit" id="t-save">Save</button>
+        <button class="btn danger full" type="button" id="t-withdraw" hidden>Team withdrew &ndash; cancel all their games</button>
+        <button class="btn danger full" type="button" id="t-delete" hidden>Delete this team</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="/score.js"></script>
+</body>
+</html>
