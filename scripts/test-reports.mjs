@@ -147,6 +147,28 @@ await post('/api/score', { gameId: cl1, status: 'scheduled' }, { 'x-passcode': '
 r = await report(cl1, 1, 6, 2);
 ok(r.data.outcome === 'published' && (await state()).scores[cl1]?.a === 6, 'resending the same score after a clear posts it again');
 
+// 13. An admin can edit a game's score from the Reports tab; it is recorded and settles the game.
+const [ad1, ad2] = GAMES.filter((g) => g.field === 1 && !usedIds.has(g.id) && ![fx1, fx2, fx3, cl1].includes(g.id)).map((g) => g.id);
+const edit = (gameId, a, b, headers = { 'x-passcode': 'test' }) => post('/api/reports', { action: 'edit', gameId, a, b }, headers);
+r = await report(ad1, 1, 5, 3);
+r = await edit(ad1, 6, 4);
+ok(r.status === 200 && (await state()).scores[ad1].a === 6 && (await state()).scores[ad1].b === 4, 'admin edit puts the new score on the board');
+const adRows = (await list()).filter((x) => x.game_id === ad1);
+const adNew = adRows.find((x) => /Edited by admin/.test(x.review_note || ''));
+ok(!!adNew && adNew.status === 'approved' && /5.3/.test(adNew.review_note), 'admin edit is recorded as its own entry noting the old score');
+ok(adRows.find((x) => x.score_a === 5)?.status === 'superseded', 'the table report it replaced is marked replaced');
+r = await edit(ad1, 3, 3);
+ok(r.status === 400, 'admin edit refuses a tie');
+r = await edit(ad1, 8, 2, {});
+ok(r.status === 401, 'admin edit needs the passcode');
+r = await report(ad2, 1, 40, 2);
+ok(r.data.outcome === 'held', 'edit test: a flagged report is held');
+r = await edit(ad2, 8, 2);
+ok(r.status === 200 && (await state()).scores[ad2].a === 8, 'admin edit works on a game with only a held report');
+ok((await list()).filter((x) => x.game_id === ad2 && x.status === 'held').length === 0, 'the held report is settled by the admin edit');
+r = await staff({ action: 'undo', id: (await list()).find((x) => x.game_id === ad2 && /Edited by admin/.test(x.review_note || '')).id });
+ok(r.status === 200 && !(await state()).scores[ad2], 'an admin edit can be undone');
+
 // 10. Time window rule (pure function): only on event day.
 const day = (iso) => new Date(iso);
 ok(slotIndexNow(SLOTS, day('2026-10-17T15:00:00Z')) === null, 'no time rule on other days');

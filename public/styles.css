@@ -218,3 +218,5 @@ dialog { max-height: 92vh; overflow-y: auto; }
 .pill.late { background: #fde8e8; color: #a12626; }
 .game.late { box-shadow: 0 0 0 2px #e8a3a3, var(--shadow); }
 .late-h { color: #a12626; }
+
+.rep-edit { margin-left: auto; }

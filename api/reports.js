@@ -4,7 +4,10 @@
 import { checkPasscode } from '../lib/auth.js';
 import { json } from '../lib/http.js';
 import { publishScore, unpublishScore, ScoreChanged } from '../lib/publish.js';
-import { getReport, updateReport, listReports, supersedeOthers, audit, ReportsUnavailable } from '../lib/reports-db.js';
+import { getReport, updateReport, listReports, insertReport, supersedeOthers, audit, ReportsUnavailable } from '../lib/reports-db.js';
+import { SLOTS, FIELDS, TEAMS, GAMES, TABLE } from '../lib/schedule.js';
+import { applyEdits } from '../lib/apply.js';
+import { readState } from '../lib/store.js';
 import { toScore } from '../lib/report-rules.js';
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
@@ -20,6 +23,33 @@ export async function POST(request) {
 
   try {
     if (action === 'list') return json({ ok: true, reports: await listReports(48) }, 200, NO_STORE);
+    // An admin sets a game's score directly from the Reports tab. It is recorded as its own entry in the game's history.
+    if (action === 'edit') {
+      const a = toScore(body.a);
+      const b = toScore(body.b);
+      if (typeof body.gameId !== 'string' || a === null || b === null) return json({ error: 'Scores must be whole numbers from 0 to 99.' }, 400, NO_STORE);
+      if (a === b) return json({ error: 'A final score cannot be tied. If the game truly ended in a tie, set it in the Scores tab.' }, 400, NO_STORE);
+      const state = await readState();
+      const sched = applyEdits({ slots: SLOTS, fields: FIELDS, teams: TEAMS, games: GAMES, table: TABLE }, state.edits);
+      const game = sched.games.find((g) => g.id === body.gameId);
+      if (!game) return json({ error: 'Unknown game.' }, 400, NO_STORE);
+      const was = state.scores[game.id]?.status === 'final' ? state.scores[game.id] : null;
+      if (was && was.a === a && was.b === b) return json({ ok: true }, 200, NO_STORE); // nothing to change
+      const rec = await insertReport({
+        client_id: `staff-${globalThis.crypto.randomUUID()}`, game_id: game.id, field: game.field, score_a: a, score_b: b,
+        ip_hash: 'staff', status: 'approved', flags: [], approved_a: a, approved_b: b, reviewed_at: now(),
+        review_note: `Edited by admin${was ? ` (was ${was.a}\u2013${was.b})` : ''}`,
+      });
+      try {
+        await publishScore(game.id, a, b, rec.id);
+      } catch (e) {
+        await updateReport(rec.id, { status: 'held', flags: ['publish-failed'] });
+        throw e;
+      }
+      await supersedeOthers(game.id, rec.id, true); // earlier reports for this game, posted or waiting, are settled by this edit
+      await audit({ actor: 'staff', action: 'admin_edited', report_id: rec.id, game_id: game.id, detail: { a, b, was: was ? [was.a, was.b] : null } });
+      return json({ ok: true }, 200, NO_STORE);
+    }
     if (typeof id !== 'string') return json({ error: 'Unknown report.' }, 400, NO_STORE);
 
     const rep = await getReport(id);

@@ -137,7 +137,7 @@ function renderReports() {
     }
     return `<div class="rep-row${newest && multi ? ' newest' : ''}">
       <div class="rep-top"><strong class="rep-score">${esc(name(g.a))} ${a} – ${b} ${esc(name(g.b))}</strong>
-        ${newest && multi ? '<span class="tag-new">Newest</span>' : ''}<span class="pill-st st-${r.status}">${STATUS[r.status] || esc(r.status)}</span></div>
+        ${newest && multi ? '<span class="tag-new">Newest</span>' : ''}<span class="pill-st st-${r.status}">${r.status === 'approved' && /^Edited by admin/.test(r.review_note || '') ? 'Admin edit' : STATUS[r.status] || esc(r.status)}</span></div>
       <div class="sub">Sent ${esc(clock(r.created_at))} (${esc(timeAgo(r.created_at) || '')})${edited ? ` · you changed it from ${r.score_a}–${r.score_b}` : ''}${r.review_note ? ` · ${esc(r.review_note)}` : ''}</div>
       ${flags ? `<div>${flags}</div>` : ''}
       ${actions ? `<div class="rep-actions">${actions}</div>` : ''}</div>`;
@@ -151,7 +151,8 @@ function renderReports() {
     const live = state.scores[gameId];
     const onBoard = live?.status === 'final' ? `On the board now: <strong>${live.a}–${live.b}</strong>` : 'Nothing on the board yet';
     return `<div class="report-card" style="--fc:${FIELD_COLORS[g.field]}">
-      <div class="rep-head"><span class="fieldtag"><i></i>Field ${g.field}</span> <span class="sub">${esc(g.div)} · ${esc(sched.slots[g.slot])}</span></div>
+      <div class="rep-head"><span class="fieldtag"><i></i>Field ${g.field}</span> <span class="sub">${esc(g.div)} · ${esc(sched.slots[g.slot])}</span>
+        <button class="btn alt small rep-edit" data-rgame="${gameId}">Edit score</button></div>
       <div class="rep-game">${esc(name(g.a))} vs ${esc(name(g.b))}</div>
       <div class="sub">${onBoard}${multi ? ` · ${sorted.length} reports for this game` : ''}</div>
       ${sorted.map((r, i) => row(r, g, i === 0, multi)).join('')}</div>`;
@@ -284,10 +285,12 @@ document.addEventListener('click', async (e) => {
   const rreject = e.target.closest('[data-rpreject]');
   const rundo = e.target.closest('[data-rpundo]');
   const redit = e.target.closest('[data-rpedit]');
+  const rgame = e.target.closest('[data-rgame]');
   if (rapprove) return reportAction('approve', rapprove.dataset.rapprove);
   if (rreject) return reportAction('reject', rreject.dataset.rpreject, rreject, 'Tap again to reject');
   if (rundo) return reportAction('undo', rundo.dataset.rpundo, rundo, 'Tap again to undo');
   if (redit) return openReportEdit(redit.dataset.rpedit);
+  if (rgame) return openGameScoreEdit(rgame.dataset.rgame);
   if (view) ui.view = view.dataset.view;
   else if (div) ui.div = div.dataset.div;
   else if (field) { ui.field = Number(field.dataset.field); store.set('pc26-sfield', String(ui.field)); }
@@ -321,7 +324,26 @@ async function reportAction(action, id, btn, armText, extra = {}) {
 
 /* Edit a held report's score, then approve it. Reuses the score editor sheet. */
 let reportEditing = null;
+let gameScoreEditing = null; // game id when an admin edits a game's score from the Reports tab
+function openGameScoreEdit(gameId) {
+  const g = sched.games.find((x) => x.id === gameId);
+  const live = state.scores[gameId]?.status === 'final' ? state.scores[gameId] : null;
+  const latest = [...reports].filter((r) => r.game_id === gameId).sort((x, y) => (y.created_at || '').localeCompare(x.created_at || ''))[0];
+  reportEditing = null;
+  gameScoreEditing = gameId;
+  editing = g;
+  $('#ed-title').textContent = `${sched.teams[g.a]} vs ${sched.teams[g.b]}`;
+  $('#ed-sub').textContent = 'Admin edit: sets the final score and is recorded in this game\u2019s history.';
+  $('#ed-a').textContent = sched.teams[g.a];
+  $('#ed-b').textContent = sched.teams[g.b];
+  $('#ed-ain').value = live ? live.a : (latest ? (latest.approved_a ?? latest.score_a) : 0);
+  $('#ed-bin').value = live ? live.b : (latest ? (latest.approved_b ?? latest.score_b) : 0);
+  ed.querySelectorAll('input[name=status]').forEach((x) => { x.checked = x.value === 'final'; });
+  $('#ed-err').textContent = '';
+  ed.showModal();
+}
 function openReportEdit(id) {
+  gameScoreEditing = null;
   const r = reports.find((x) => x.id === id);
   const g = sched.games.find((x) => x.id === r.game_id);
   reportEditing = r;
@@ -346,6 +368,7 @@ const num = (el) => { const n = parseInt(el.value, 10); return Number.isNaN(n) ?
 
 function openEditor(id) {
   reportEditing = null;
+  gameScoreEditing = null;
   const g = sched.games.find((x) => x.id === id);
   const s = state.scores[id];
   editing = g;
@@ -371,7 +394,7 @@ ed.addEventListener('click', (e) => {
   const chosen = ed.querySelector('input[name=status]:checked');
   if (chosen?.value === 'scheduled') ed.querySelector('input[value=live]').checked = true;
 });
-$('#ed-cancel').addEventListener('click', () => { reportEditing = null; ed.close(); });
+$('#ed-cancel').addEventListener('click', () => { reportEditing = null; gameScoreEditing = null; ed.close(); });
 
 $('#ed-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -381,6 +404,16 @@ $('#ed-form').addEventListener('submit', async (e) => {
   btn.textContent = 'Saving…';
   $('#ed-err').textContent = '';
   try {
+    if (gameScoreEditing) {
+      await api('/api/reports', { action: 'edit', gameId: gameScoreEditing, a: num($('#ed-ain')), b: num($('#ed-bin')) });
+      gameScoreEditing = null;
+      setState(await fetchState(true));
+      await refreshReports();
+      ed.close();
+      render();
+      toast('Score updated and recorded as an admin edit');
+      return;
+    }
     if (reportEditing) {
       // Keep reportEditing until the save succeeds, so a retry after an error still approves this report.
       await api('/api/reports', { action: 'approve', id: reportEditing.id, a: num($('#ed-ain')), b: num($('#ed-bin')) });
