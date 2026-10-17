@@ -1,6 +1,7 @@
 {
   "cleanUrls": true,
   "regions": ["cle1"],
+  "crons": [{ "path": "/api/keepalive", "schedule": "0 15 */5 * *" }],
   "headers": [
     {
       "source": "/(.*)",

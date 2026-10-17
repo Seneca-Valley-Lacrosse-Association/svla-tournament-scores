@@ -111,6 +111,7 @@ Each scoring table has a QR code (one per field, not per game) that opens `/repo
 - Retries are safe (each attempt carries a client id), and reports are rate limited per game and per phone.
 - **Score lock:** a table worker can fix a score for **20 minutes** after it first went up (corrections do not restart the clock). After that the server refuses new reports and corrections with a "locked" answer, and the page shows *"This score is locked. If you see a mistake, please call or text Stretch"* with tap-to-call and tap-to-text links; "Edit score" is hidden. Staff are not affected: they can still change any score from the Scores and Reports tabs. `supabase/report-lock.sql` adds the same rule as a database trigger, as a backup. Change `LOCK_MINUTES` in `lib/report-rules.js` (and `LOCK_MS` in `public/report.js` and the interval in the SQL file) to adjust it.
 - Env vars (server only): `SUPABASE_URL` and `SUPABASE_SECRET_KEY`.
+- **Keeping the free Supabase project awake:** Supabase pauses free projects after about a week with no activity. `vercel.json` runs `/api/keepalive` every 5 days (3:00 PM UTC), which makes one tiny read against the reports table. It needs a `CRON_SECRET` environment variable in Vercel (Production, Sensitive; any long random string). Without it the endpoint refuses every request. A paid Supabase plan makes this unnecessary.
 - Local test: start the dev server with `STORE=file REPORTS_STORE=file ORGANIZER_PASSCODE=test`, then run `node scripts/test-reports.mjs`.
 
 ---
