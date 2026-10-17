@@ -185,3 +185,19 @@ details.card > summary { font-weight: 800; color: var(--navy); cursor: pointer; 
 .hint { font-size: 14px; color: var(--muted); margin: 8px 0 0; }
 dialog { max-height: 92vh; overflow-y: auto; }
 .resetall { margin-top: 20px; text-align: center; }
+
+/* Table score report page (/report) */
+.hero.compact { padding: 20px 16px 16px; }
+.hero.compact h1 { font-size: 38px; margin-bottom: 2px; }
+.help { text-align: center; margin: 28px 0 0; font-size: 18px; font-weight: 700; color: var(--navy); }
+.help a { color: var(--blue); }
+.game.sent { opacity: 0.85; }
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.field-btn { text-align: center; text-decoration: none; font-size: 22px; padding: 22px 12px; border-left: 8px solid var(--fc); }
+.confirm-line { font-size: 22px; line-height: 1.5; margin: 6px 0 4px; }
+.confirm-line strong { font-size: 34px; margin-left: 8px; color: var(--navy); }
+.report-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; margin-bottom: 10px; }
+.flag { display: inline-block; background: #fff4e8; color: var(--pumpkin-deep); font-weight: 700; font-size: 13px; padding: 3px 9px; border-radius: 999px; margin: 2px 4px 2px 0; }
+.rep-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.badge { display: inline-block; min-width: 22px; padding: 1px 7px; margin-left: 6px; border-radius: 999px; background: var(--pumpkin-deep); color: #fff; font-size: 13px; font-weight: 800; line-height: 20px; }
+.rep-h { font-size: 20px; color: var(--navy); margin: 22px 0 8px; }

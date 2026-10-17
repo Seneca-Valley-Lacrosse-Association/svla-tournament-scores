@@ -9,6 +9,8 @@ let state = { scores: {}, edits: {}, updatedAt: null };
 let pass = '';
 let editing = null;
 let poll;
+let reports = [];
+let reportsErr = '';
 
 const ss = {
   get() { try { return sessionStorage.getItem(PASS_KEY) || ''; } catch { return ''; } },
@@ -83,6 +85,74 @@ $('#signout').addEventListener('click', signOut);
 /* ---------- lists ---------- */
 async function refresh() {
   try { setState(await fetchState(true)); } catch { toast('Could not refresh — check your connection.', true); }
+  await refreshReports();
+}
+
+async function refreshReports() {
+  try {
+    reports = (await api('/api/reports', { action: 'list' })).reports || [];
+    reportsErr = '';
+  } catch (err) {
+    if (err.status === 401) return;
+    reportsErr = err.message;
+  }
+  const held = reports.filter((r) => r.status === 'held').length;
+  const badge = $('#rep-badge');
+  badge.textContent = held;
+  badge.hidden = !held;
+}
+
+const FLAG_TEXT = {
+  'wrong-field': 'Reported from a different field than scheduled',
+  'already-final': 'Game already has a final score',
+  'conflict': 'Another report has a different score',
+  'tie': 'Tied final score (no tie allowed)',
+  'high-score': 'Unusually high score',
+  'too-early': 'Game has not reached its start time yet',
+  'publish-failed': 'Could not post to the scoreboard',
+};
+
+function renderReports() {
+  const name = (code) => sched.teams[code] || code;
+  const line = (r, g) => {
+    const edited = r.approved_a != null && (r.approved_a !== r.score_a || r.approved_b !== r.score_b);
+    const a = r.approved_a ?? r.score_a;
+    const b = r.approved_b ?? r.score_b;
+    const text = g ? `${esc(name(g.a))} ${a} \u2013 ${b} ${esc(name(g.b))}` : `${esc(r.game_id)} ${a} \u2013 ${b}`;
+    return edited ? `${text} <small>(reported ${r.score_a}\u2013${r.score_b})</small>` : text;
+  };
+  const when = (iso) => timeAgo(iso) || '';
+  const card = (r) => {
+    const g = sched.games.find((x) => x.id === r.game_id);
+    const flags = (r.flags || []).map((f) => `<span class="flag">${esc(FLAG_TEXT[f] || f)}</span>`).join('');
+    const where = g ? `${g.div} \u00b7 ${esc(sched.slots[g.slot])} \u00b7 Field ${g.field}` : '';
+    const live = state.scores[r.game_id];
+    const onBoard = live?.status === 'final' ? `<span class="sub">On the board now: ${live.a}\u2013${live.b}</span>` : '';
+    let actions = '';
+    if (r.status === 'held') {
+      actions = `<button class="btn small" data-rapprove="${r.id}">Approve</button>
+        <button class="btn alt small" data-rpedit="${r.id}">Edit score</button>
+        <button class="btn danger small" data-rpreject="${r.id}">Reject</button>`;
+    } else if (r.status === 'published' || r.status === 'approved') {
+      actions = `<button class="btn danger small" data-rpundo="${r.id}">Undo</button>`;
+    }
+    return `<div class="report-card"><strong>${line(r, g)}</strong>
+      <div class="sub">${where} \u00b7 sent ${esc(when(r.created_at))}</div>
+      <div>${flags}</div>${onBoard}
+      ${actions ? `<div class="rep-actions">${actions}</div>` : ''}</div>`;
+  };
+  const held = reports.filter((r) => r.status === 'held');
+  const posted = reports.filter((r) => r.status === 'published' || r.status === 'approved');
+  const other = reports.filter((r) => r.status === 'rejected' || r.status === 'undone');
+  let html = `<p class="note">Clean scores from the scoring tables post automatically. Anything unusual waits here for you. Held reports are <strong>not</strong> shown to parents until approved.</p>`;
+  if (reportsErr) html += `<p class="err">${esc(reportsErr)}</p>`;
+  html += `<h2 class="rep-h">Needs review (${held.length})</h2>${held.length ? held.map(card).join('') : '<p class="empty">Nothing waiting. \ud83c\udf83</p>'}`;
+  html += `<h2 class="rep-h">Posted from tables (${posted.length})</h2>${posted.length ? posted.map(card).join('') : '<p class="empty">No table reports yet.</p>'}`;
+  if (other.length) html += `<details class="card"><summary>Rejected and undone (${other.length})</summary>${other.map((r) => {
+    const g = sched.games.find((x) => x.id === r.game_id);
+    return `<div class="trow"><span>${line(r, g)} <small>${esc(r.status)}</small></span></div>`;
+  }).join('')}</details>`;
+  return html;
 }
 
 const teamNo = (code) => parseInt(code.slice(2), 10) || 0;
@@ -123,12 +193,13 @@ function renderStandings() {
 function render() {
   const editView = ui.view === 'edit';
   const standView = ui.view === 'standings';
+  const repView = ui.view === 'reports';
   document.querySelectorAll('[data-view]').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.view === ui.view)));
 
   const divs = ['All', 'Varsity', 'JV'];
-  $('#filters').innerHTML = `
+  $('#filters').innerHTML = repView ? '' : `
     ${divs.map((d) => `<button class="chip" data-div="${d}" aria-pressed="${ui.div === d}">${d === 'All' ? 'All divisions' : d}</button>`).join('')}
-    ${standView ? '' : `<span class="filter-label" style="width:100%">${editView ? 'Field' : 'My field'}</span>
+    ${standView || repView ? '' : `<span class="filter-label" style="width:100%">${editView ? 'Field' : 'My field'}</span>
     <button class="chip" data-field="0" aria-pressed="${ui.field === 0}">All</button>
     ${[1, 2, 3, 4].map((f) => `<button class="chip" data-field="${f}" aria-pressed="${ui.field === f}"><span class="dot" style="background:${FIELD_COLORS[f]}"></span>${f}</button>`).join('')}
     ${editView ? '' : `<button class="chip" data-hidefinal="1" aria-pressed="${ui.hideFinal}">Hide finished</button>`}`}`;
@@ -146,6 +217,7 @@ function render() {
     !(!editView && ui.hideFinal && state.scores[g.id]?.status === 'final'));
 
   if (standView) { $('#app').innerHTML = renderStandings(); return; }
+  if (repView) { $('#app').innerHTML = renderReports(); return; }
 
   let html = editView
     ? `<p class="note">Changes show on the parent page right away. Edit a team to rename or replace it everywhere, or edit a single game to move it, swap a team, or cancel it.</p><p><button class="btn" type="button" data-gadd="1">+ Add a game</button></p>${teamsCard()}`
@@ -187,6 +259,14 @@ document.addEventListener('click', async (e) => {
   const tadd = e.target.closest('[data-tadd]');
   const resetAll = e.target.closest('[data-resetall]');
   const gadd = e.target.closest('[data-gadd]');
+  const rapprove = e.target.closest('[data-rapprove]');
+  const rreject = e.target.closest('[data-rpreject]');
+  const rundo = e.target.closest('[data-rpundo]');
+  const redit = e.target.closest('[data-rpedit]');
+  if (rapprove) return reportAction('approve', rapprove.dataset.rapprove);
+  if (rreject) return reportAction('reject', rreject.dataset.rpreject, rreject, 'Tap again to reject');
+  if (rundo) return reportAction('undo', rundo.dataset.rpundo, rundo, 'Tap again to undo');
+  if (redit) return openReportEdit(redit.dataset.rpedit);
   if (view) ui.view = view.dataset.view;
   else if (div) ui.div = div.dataset.div;
   else if (field) { ui.field = Number(field.dataset.field); store.set('pc26-sfield', String(ui.field)); }
@@ -204,6 +284,38 @@ document.addEventListener('click', async (e) => {
   } else return;
   render();
 });
+async function reportAction(action, id, btn, armText, extra = {}) {
+  if (btn && !confirmTap(btn, `${action}:${id}`, armText)) return;
+  try {
+    await api('/api/reports', { action, id, ...extra });
+    setState(await fetchState(true));
+    await refreshReports();
+    render();
+    toast(action === 'undo' ? 'Score removed from the board' : action === 'reject' ? 'Report rejected' : 'Posted to the scoreboard');
+  } catch (err) {
+    if (err.status === 401) sessionExpired();
+    else toast(err.message, true);
+  }
+}
+
+/* Edit a held report's score, then approve it. Reuses the score editor sheet. */
+let reportEditing = null;
+function openReportEdit(id) {
+  const r = reports.find((x) => x.id === id);
+  const g = sched.games.find((x) => x.id === r.game_id);
+  reportEditing = r;
+  editing = g;
+  $('#ed-title').textContent = `${sched.teams[g.a]} vs ${sched.teams[g.b]}`;
+  $('#ed-sub').textContent = 'Fix the final score, then Save to approve it.';
+  $('#ed-a').textContent = sched.teams[g.a];
+  $('#ed-b').textContent = sched.teams[g.b];
+  $('#ed-ain').value = r.score_a;
+  $('#ed-bin').value = r.score_b;
+  ed.querySelectorAll('input[name=status]').forEach((x) => { x.checked = x.value === 'final'; });
+  $('#ed-err').textContent = '';
+  ed.showModal();
+}
+
 document.addEventListener('toggle', (e) => { if (e.target.id === 'teams-card') ui.teamsOpen = e.target.open; }, true);
 
 /* ---------- score editor ---------- */
@@ -212,6 +324,7 @@ const clamp = (n) => Math.max(0, Math.min(99, n));
 const num = (el) => { const n = parseInt(el.value, 10); return Number.isNaN(n) ? 0 : clamp(n); };
 
 function openEditor(id) {
+  reportEditing = null;
   const g = sched.games.find((x) => x.id === id);
   const s = state.scores[id];
   editing = g;
@@ -237,7 +350,7 @@ ed.addEventListener('click', (e) => {
   const chosen = ed.querySelector('input[name=status]:checked');
   if (chosen?.value === 'scheduled') ed.querySelector('input[value=live]').checked = true;
 });
-$('#ed-cancel').addEventListener('click', () => ed.close());
+$('#ed-cancel').addEventListener('click', () => { reportEditing = null; ed.close(); });
 
 $('#ed-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -247,6 +360,17 @@ $('#ed-form').addEventListener('submit', async (e) => {
   btn.textContent = 'Saving…';
   $('#ed-err').textContent = '';
   try {
+    if (reportEditing) {
+      const rid = reportEditing.id;
+      reportEditing = null;
+      await api('/api/reports', { action: 'approve', id: rid, a: num($('#ed-ain')), b: num($('#ed-bin')) });
+      setState(await fetchState(true));
+      await refreshReports();
+      ed.close();
+      render();
+      toast('Posted to the scoreboard');
+      return;
+    }
     const res = await api('/api/score', { gameId: editing.id, status, a: num($('#ed-ain')), b: num($('#ed-bin')) });
     setState(res);
     ed.close();
