@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Report a Score · Pumpkin Classic</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="hero compact">
+    <span class="eyebrow">Pumpkin Classic Showcase</span>
+    <h1 id="field-title">Report a score</h1>
+    <p>Scan, tap the game, enter the final score.</p>
+  </header>
+
+  <div class="wrap">
+    <main id="app" aria-live="polite"><p class="empty">Loading games…</p></main>
+    <p class="help">Problems? Call Stretch: <a href="tel:6145229419">614-522-9419</a></p>
+  </div>
+
+  <dialog id="rdlg" aria-labelledby="r-title">
+    <form class="sheet" id="r-form" method="dialog">
+      <h3 id="r-title"></h3>
+      <p class="sub" id="r-sub"></p>
+      <div id="r-enter">
+        <div class="stepper-row"><span class="tn" id="r-a"></span><div class="stepper"><button type="button" data-step="a:-1" aria-label="Subtract a goal">−</button><input id="r-ain" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="Score"><button type="button" data-step="a:1" aria-label="Add a goal">+</button></div></div>
+        <div class="stepper-row"><span class="tn" id="r-b"></span><div class="stepper"><button type="button" data-step="b:-1" aria-label="Subtract a goal">−</button><input id="r-bin" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="Score"><button type="button" data-step="b:1" aria-label="Add a goal">+</button></div></div>
+      </div>
+      <div id="r-confirm" hidden>
+        <p class="confirm-line" id="r-line"></p>
+        <p class="hint" id="r-hint">This is the <strong>final</strong> score for the game. Check it, then send.</p>
+      </div>
+      <p class="err" id="r-err" role="alert"></p>
+      <div class="actions">
+        <button class="btn alt" type="button" id="r-back">Cancel</button>
+        <button class="btn" type="submit" id="r-next">Next</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="/report.js"></script>
+</body>
+</html>

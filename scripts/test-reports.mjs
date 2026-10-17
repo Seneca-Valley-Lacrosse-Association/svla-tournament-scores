@@ -1,0 +1,184 @@
+// End-to-end check of the table report flow against a local dev server.
+//   rm -rf .data
+//   STORE=file REPORTS_STORE=file ORGANIZER_PASSCODE=test PORT=3000 node scripts/dev-server.mjs &
+//   node scripts/test-reports.mjs
+import { assess, slotIndexNow } from '../lib/report-rules.js';
+import { SLOTS, GAMES } from '../lib/schedule.js';
+
+const base = process.env.BASE || 'http://localhost:3000';
+let failures = 0;
+const ok = (cond, label) => { console.log(`${cond ? 'PASS' : 'FAIL'}  ${label}`); if (!cond) failures++; };
+
+const post = async (path, body, headers = {}) => {
+  const r = await fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
+  return { status: r.status, data: await r.json().catch(() => ({})) };
+};
+// Games already used by the checks above, so the correction checks start from a clean game.
+const s_used = () => ['V01', 'V02', 'V03', 'V04', 'V05', 'V06', 'V07', 'V09', 'V10'];
+const phone = () => ({ 'x-forwarded-for': `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` });
+const report = (gameId, field, a, b, clientId) => post('/api/report', { gameId, field, a, b, clientId: clientId || `test-${Math.random().toString(36).slice(2)}-${Date.now()}` }, phone());
+const correct = (gameId, field, a, b) => post('/api/report', { gameId, field, a, b, correction: true, clientId: `fix-${Math.random().toString(36).slice(2)}-${Date.now()}` }, phone());
+const staff = (body) => post('/api/reports', body, { 'x-passcode': 'test' });
+const state = async () => (await fetch(base + '/api/state?fresh=1')).json();
+const list = async () => (await staff({ action: 'list' })).data.reports;
+
+// 1. A clean report posts straight to the board.
+let r = await report('V01', 1, 7, 5);
+ok(r.data.outcome === 'published', 'clean report is published');
+ok((await state()).scores.V01?.a === 7 && (await state()).scores.V01?.status === 'final', 'published score is on the board as final');
+
+// 2. The same score again is a harmless duplicate.
+r = await report('V01', 1, 7, 5);
+ok(r.data.outcome === 'duplicate', 'same score again is treated as a duplicate');
+
+// 3. A conflicting second report is held and does not change the board.
+r = await report('V01', 1, 4, 3);
+ok(r.data.outcome === 'held', 'conflicting report is held');
+ok((await state()).scores.V01.a === 7, 'held report does not change the board');
+
+// 4. Retry with the same clientId never creates a second row.
+const cid = 'retry-test-client-id-1';
+r = await report('V02', 2, 40, 3, cid);
+const before = (await list()).length;
+const r2 = await report('V02', 2, 40, 3, cid);
+ok(r.data.outcome === 'held' && r2.data.outcome === 'held', 'a held report, and a retry returns the same result');
+ok((await list()).length === before, 'a retry does not add another report');
+
+// 4b. A tied score is refused at the table: clear message, nothing stored, nothing on the board.
+const tieBefore = (await list()).length;
+r = await report('V10', 3, 4, 4);
+ok(r.status === 422 && r.data.code === 'tie', 'tied score is refused with a tie code');
+ok(/614-522-9419/.test(r.data.error || '') && /Stretch/.test(r.data.error || ''), 'tie message tells them to call or text Stretch');
+ok((await list()).length === tieBefore && !(await state()).scores.V10, 'a refused tie is not stored or posted');
+r = await report('V10', 3, 0, 0);
+ok(r.status === 422, 'a 0-0 tie is refused too');
+
+// 5. Wrong field, high score.
+r = await report('V03', 4, 6, 4);
+ok(r.data.outcome === 'held', 'report from the wrong field is held');
+r = await report('V04', 2, 40, 2);
+ok(r.data.outcome === 'held', 'unusually high score is held');
+
+// 6. Validation.
+r = await report('V05', 3, -1, 4);
+ok(r.status === 400, 'negative score is rejected');
+r = await report('NOPE', 3, 5, 4);
+ok(r.status === 400, 'unknown game is rejected');
+r = await post('/api/reports', { action: 'list' });
+ok(r.status === 401, 'staff list needs the passcode');
+
+// 7. Staff review.
+const reps = await list();
+const heldTie = reps.find((x) => x.game_id === 'V02' && x.status === 'held');
+ok(!!heldTie && heldTie.flags.includes('high-score'), 'held report shows its flag');
+r = await staff({ action: 'approve', id: heldTie.id, a: 5, b: 5 });
+ok(r.status === 400, 'approving a tied score is refused');
+r = await staff({ action: 'approve', id: heldTie.id, a: 6, b: 5 });
+ok(r.status === 200 && (await state()).scores.V02.a === 6, 'approve with a corrected score posts it');
+r = await staff({ action: 'approve', id: heldTie.id });
+ok(r.status === 409, 'approving twice is refused');
+const heldHigh = reps.find((x) => x.game_id === 'V04' && x.status === 'held');
+r = await staff({ action: 'reject', id: heldHigh.id });
+ok(r.status === 200 && !(await state()).scores.V04, 'reject keeps it off the board');
+
+// 8. Undo removes a posted score, but not one staff changed afterwards.
+const posted = (await list()).find((x) => x.game_id === 'V01' && x.status === 'published');
+r = await staff({ action: 'undo', id: posted.id });
+ok(r.status === 200 && !(await state()).scores.V01, 'undo removes the posted score');
+r = await report('V06', 1, 9, 2);
+const v06 = (await list()).find((x) => x.game_id === 'V06');
+await post('/api/score', { gameId: 'V06', status: 'final', a: 9, b: 3 }, { 'x-passcode': 'test' });
+r = await staff({ action: 'undo', id: v06.id });
+ok(r.status === 409, 'undo is refused after a scorekeeper changed that score');
+
+// 9. Per-game report limit.
+for (let i = 0; i < 8; i++) r = await report('V07', 3, 10 + i, 1);
+ok(r.status === 429, 'too many reports for one game are refused');
+
+// 11. A table worker can fix their own wrong score; it replaces the old one at once.
+const usedIds = new Set(s_used());
+const f1 = GAMES.filter((g) => g.field === 1 && !usedIds.has(g.id)).map((g) => g.id);
+const [fx1, fx2, fx3] = f1;
+r = await report(fx1, 1, 5, 3);
+ok(r.data.outcome === 'published', 'fix test: first report posts');
+r = await correct(fx1, 1, 3, 5);
+ok(r.data.outcome === 'published', 'a correction posts straight away');
+ok((await state()).scores[fx1].a === 3 && (await state()).scores[fx1].b === 5, 'the corrected score is on the board');
+const fxRows = (await list()).filter((x) => x.game_id === fx1);
+ok(fxRows.find((x) => x.score_a === 5)?.status === 'superseded', 'the old report is marked replaced');
+ok(fxRows.find((x) => x.score_a === 3)?.status === 'published' && /5.3/.test(fxRows.find((x) => x.score_a === 3)?.review_note || ''), 'the new report is posted and notes what it corrected');
+r = await correct(fx1, 1, 3, 5);
+ok(r.data.outcome === 'duplicate', 'sending the same corrected score again is harmless');
+r = await correct(fx1, 1, 4, 4);
+ok(r.status === 422 && r.data.code === 'tie', 'a correction to a tie is refused');
+const stale = (await list()).filter((x) => x.game_id === fx1 && x.status === 'published');
+ok(stale.length === 1, 'only the newest report for the game stays posted');
+r = await staff({ action: 'undo', id: fxRows.find((x) => x.score_a === 5).id });
+ok(r.status === 409, 'a replaced report cannot be undone');
+
+// A correction never overwrites a score a staff member set.
+r = await report(fx2, 1, 4, 1);
+await post('/api/score', { gameId: fx2, status: 'final', a: 7, b: 1 }, { 'x-passcode': 'test' });
+r = await correct(fx2, 1, 2, 1);
+ok(r.data.outcome === 'held', 'a correction over a staff score waits for review');
+ok((await state()).scores[fx2].a === 7, 'the staff score stays on the board');
+
+// Approving a held correction replaces the earlier posted report.
+r = await report(fx3, 1, 9, 2);
+r = await correct(fx3, 1, 40, 2);
+ok(r.data.outcome === 'held', 'a flagged correction (high score) is held');
+ok((await state()).scores[fx3].a === 9, 'the held correction does not change the board');
+const heldFix = (await list()).find((x) => x.game_id === fx3 && x.status === 'held');
+r = await staff({ action: 'approve', id: heldFix.id, a: 8, b: 2 });
+ok(r.status === 200 && (await state()).scores[fx3].a === 8, 'approving it posts the corrected score');
+ok((await list()).filter((x) => x.game_id === fx3 && x.status === 'published').length === 0, 'the earlier report is marked replaced after approval');
+
+// 12. A cleared score does not cause false conflicts: stale posted reports are ignored.
+const [cl1] = GAMES.filter((g) => g.field === 1 && !usedIds.has(g.id) && ![fx1, fx2, fx3].includes(g.id)).map((g) => g.id);
+r = await report(cl1, 1, 4, 1);
+ok(r.data.outcome === 'published', 'clear test: first report posts');
+await post('/api/score', { gameId: cl1, status: 'scheduled' }, { 'x-passcode': 'test' });
+ok(!(await state()).scores[cl1], 'clear test: staff cleared the score from the board');
+r = await report(cl1, 1, 6, 2);
+ok(r.data.outcome === 'published', 'a new score after the board was cleared posts with no false conflict');
+r = await report(cl1, 1, 6, 2);
+ok(r.data.outcome === 'duplicate', 'sending that same score again is a duplicate');
+await post('/api/score', { gameId: cl1, status: 'scheduled' }, { 'x-passcode': 'test' });
+r = await report(cl1, 1, 6, 2);
+ok(r.data.outcome === 'published' && (await state()).scores[cl1]?.a === 6, 'resending the same score after a clear posts it again');
+
+// 13. An admin can edit a game's score from the Reports tab; it is recorded and settles the game.
+const [ad1, ad2] = GAMES.filter((g) => g.field === 1 && !usedIds.has(g.id) && ![fx1, fx2, fx3, cl1].includes(g.id)).map((g) => g.id);
+const edit = (gameId, a, b, headers = { 'x-passcode': 'test' }) => post('/api/reports', { action: 'edit', gameId, a, b }, headers);
+r = await report(ad1, 1, 5, 3);
+r = await edit(ad1, 6, 4);
+ok(r.status === 200 && (await state()).scores[ad1].a === 6 && (await state()).scores[ad1].b === 4, 'admin edit puts the new score on the board');
+const adRows = (await list()).filter((x) => x.game_id === ad1);
+const adNew = adRows.find((x) => /Edited by admin/.test(x.review_note || ''));
+ok(!!adNew && adNew.status === 'approved' && /5.3/.test(adNew.review_note), 'admin edit is recorded as its own entry noting the old score');
+ok(adRows.find((x) => x.score_a === 5)?.status === 'superseded', 'the table report it replaced is marked replaced');
+r = await edit(ad1, 3, 3);
+ok(r.status === 400, 'admin edit refuses a tie');
+r = await edit(ad1, 8, 2, {});
+ok(r.status === 401, 'admin edit needs the passcode');
+r = await report(ad2, 1, 40, 2);
+ok(r.data.outcome === 'held', 'edit test: a flagged report is held');
+r = await edit(ad2, 8, 2);
+ok(r.status === 200 && (await state()).scores[ad2].a === 8, 'admin edit works on a game with only a held report');
+ok((await list()).filter((x) => x.game_id === ad2 && x.status === 'held').length === 0, 'the held report is settled by the admin edit');
+r = await staff({ action: 'undo', id: (await list()).find((x) => x.game_id === ad2 && /Edited by admin/.test(x.review_note || '')).id });
+ok(r.status === 200 && !(await state()).scores[ad2], 'an admin edit can be undone');
+
+// 10. Time window rule (pure function): only on event day.
+const day = (iso) => new Date(iso);
+ok(slotIndexNow(SLOTS, day('2026-10-17T15:00:00Z')) === null, 'no time rule on other days');
+ok(slotIndexNow(SLOTS, day('2026-10-18T13:30:00Z')) === 0, '9:30 AM on event day is slot 0');
+ok(slotIndexNow(SLOTS, day('2026-10-18T12:00:00Z')) === -1, '8:00 AM on event day is before the first slot');
+const g = { id: 'V09', slot: 3, field: 1 };
+const early = assess({ game: g, field: 1, a: 5, b: 4, existing: undefined, prior: [], slots: SLOTS, now: day('2026-10-18T13:30:00Z') });
+ok(early.includes('too-early'), 'a game that has not started yet is flagged');
+const fine = assess({ game: g, field: 1, a: 5, b: 4, existing: undefined, prior: [], slots: SLOTS, now: day('2026-10-18T17:00:00Z') });
+ok(fine.length === 0, 'a game in the current slot is clean');
+
+console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll checks passed');
+process.exit(failures ? 1 : 0);

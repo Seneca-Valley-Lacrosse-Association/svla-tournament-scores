@@ -100,6 +100,18 @@ Destructive buttons use a two-tap confirmation instead of browser pop-ups, which
 }
 ```
 
+
+### Table score reports (`/report?field=N`)
+
+Each scoring table has a QR code (one per field, not per game) that opens `/report?field=3`. No login: the worker taps the game, enters the final score, confirms, and sends.
+
+- **Clean reports post straight to the scoreboard** as Final. Anything unusual is **held** and shown only to staff in the **Reports** tab of `/score`: a second report with a different score, a game that already has a final score, a tied final, a score above 30, a report from the wrong field, or (on event day) a game that has not reached its start time.
+- Staff can **Approve**, **Edit score** then approve, or **Reject** held reports, and **Undo** any posted one (Undo refuses if a scorekeeper changed that score afterwards).
+- Reports and an audit log live in a separate **Supabase** project (`svla-scores`), locked down with row level security so only this server can touch them. The live scoreboard itself still uses Blob. If Supabase is unavailable, scorekeepers can still enter scores in the Scores tab.
+- Retries are safe (each attempt carries a client id), and reports are rate limited per game and per phone.
+- Env vars (server only): `SUPABASE_URL` and `SUPABASE_SECRET_KEY`.
+- Local test: start the dev server with `STORE=file REPORTS_STORE=file ORGANIZER_PASSCODE=test`, then run `node scripts/test-reports.mjs`.
+
 ---
 
 ## Project layout
