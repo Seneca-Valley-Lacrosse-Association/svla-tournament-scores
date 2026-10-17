@@ -133,6 +133,20 @@ r = await staff({ action: 'approve', id: heldFix.id, a: 8, b: 2 });
 ok(r.status === 200 && (await state()).scores[fx3].a === 8, 'approving it posts the corrected score');
 ok((await list()).filter((x) => x.game_id === fx3 && x.status === 'published').length === 0, 'the earlier report is marked replaced after approval');
 
+// 12. A cleared score does not cause false conflicts: stale posted reports are ignored.
+const [cl1] = GAMES.filter((g) => g.field === 1 && !usedIds.has(g.id) && ![fx1, fx2, fx3].includes(g.id)).map((g) => g.id);
+r = await report(cl1, 1, 4, 1);
+ok(r.data.outcome === 'published', 'clear test: first report posts');
+await post('/api/score', { gameId: cl1, status: 'scheduled' }, { 'x-passcode': 'test' });
+ok(!(await state()).scores[cl1], 'clear test: staff cleared the score from the board');
+r = await report(cl1, 1, 6, 2);
+ok(r.data.outcome === 'published', 'a new score after the board was cleared posts with no false conflict');
+r = await report(cl1, 1, 6, 2);
+ok(r.data.outcome === 'duplicate', 'sending that same score again is a duplicate');
+await post('/api/score', { gameId: cl1, status: 'scheduled' }, { 'x-passcode': 'test' });
+r = await report(cl1, 1, 6, 2);
+ok(r.data.outcome === 'published' && (await state()).scores[cl1]?.a === 6, 'resending the same score after a clear posts it again');
+
 // 10. Time window rule (pure function): only on event day.
 const day = (iso) => new Date(iso);
 ok(slotIndexNow(SLOTS, day('2026-10-17T15:00:00Z')) === null, 'no time rule on other days');

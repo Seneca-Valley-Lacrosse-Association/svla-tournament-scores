@@ -57,7 +57,10 @@ export async function POST(request) {
     if (!game || game.cancelled) return json({ error: 'That game is not available for reporting.' }, 400, NO_STORE);
 
     const all = await reportsForGame(gameId);
-    const prior = all.filter((r) => r.status === 'published' || r.status === 'approved' || r.status === 'held');
+    // Earlier reports only count if they are still in play: waiting for staff, or the one actually on the board.
+    // A posted report whose score staff later cleared or changed is stale and must not cause a false conflict.
+    const prior = all.filter((r) => r.status === 'held'
+      || ((r.status === 'published' || r.status === 'approved') && state.scores[gameId]?.reportId === r.id));
     if (all.length >= MAX_REPORTS_PER_GAME) return json({ error: `This game already has several reports. ${CALL}`, code: 'limit' }, 429, NO_STORE);
 
     // Same score already on the board or already reported: nothing to do.
