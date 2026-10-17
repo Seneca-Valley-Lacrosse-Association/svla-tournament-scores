@@ -110,6 +110,7 @@ Each scoring table has a QR code (one per field, not per game) that opens `/repo
 - Reports and an audit log live in a separate **Supabase** project (`svla-scores`), locked down with row level security so only this server can touch them. The live scoreboard itself still uses Blob. If Supabase is unavailable, scorekeepers can still enter scores in the Scores tab.
 - Retries are safe (each attempt carries a client id), and reports are rate limited per game and per phone.
 - Env vars (server only): `SUPABASE_URL` and `SUPABASE_SECRET_KEY`.
+- **Keeping the free Supabase project awake:** Supabase pauses free projects after about a week with no activity. `vercel.json` runs `/api/keepalive` every 5 days (3:00 PM UTC), which makes one tiny read against the reports table. It needs a `CRON_SECRET` environment variable in Vercel (Production, Sensitive; any long random string). Without it the endpoint refuses every request. A paid Supabase plan makes this unnecessary.
 - Local test: start the dev server with `STORE=file REPORTS_STORE=file ORGANIZER_PASSCODE=test`, then run `node scripts/test-reports.mjs`.
 
 ---
