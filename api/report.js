@@ -31,6 +31,14 @@ export async function POST(request) {
   }
   if (!Number.isInteger(field) || !FIELDS[field]) return json({ error: 'Unknown field.' }, 400, NO_STORE);
   if (a === null || b === null) return json({ error: 'Scores must be whole numbers from 0 to 99.' }, 400, NO_STORE);
+  if (a === b) {
+    // No ties in this tournament. Nothing is stored; the worker is sent to Stretch if the game really ended tied.
+    await audit({ actor: 'table', action: 'tie_rejected', game_id: gameId, detail: { a, b, field } });
+    return json({
+      error: 'Ties are not allowed. Please double-check the score. If the game truly ended in a tie, call or text Stretch at 614-522-9419.',
+      code: 'tie',
+    }, 422, NO_STORE);
+  }
 
   try {
     // A retry of a request the server already handled returns the earlier result.

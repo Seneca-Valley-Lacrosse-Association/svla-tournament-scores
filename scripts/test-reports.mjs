@@ -34,11 +34,20 @@ ok((await state()).scores.V01.a === 7, 'held report does not change the board');
 
 // 4. Retry with the same clientId never creates a second row.
 const cid = 'retry-test-client-id-1';
-r = await report('V02', 2, 3, 3, cid);
+r = await report('V02', 2, 40, 3, cid);
 const before = (await list()).length;
-const r2 = await report('V02', 2, 3, 3, cid);
-ok(r.data.outcome === 'held' && r2.data.outcome === 'held', 'tie is held, and a retry returns the same result');
+const r2 = await report('V02', 2, 40, 3, cid);
+ok(r.data.outcome === 'held' && r2.data.outcome === 'held', 'a held report, and a retry returns the same result');
 ok((await list()).length === before, 'a retry does not add another report');
+
+// 4b. A tied score is refused at the table: clear message, nothing stored, nothing on the board.
+const tieBefore = (await list()).length;
+r = await report('V10', 3, 4, 4);
+ok(r.status === 422 && r.data.code === 'tie', 'tied score is refused with a tie code');
+ok(/614-522-9419/.test(r.data.error || '') && /Stretch/.test(r.data.error || ''), 'tie message tells them to call or text Stretch');
+ok((await list()).length === tieBefore && !(await state()).scores.V10, 'a refused tie is not stored or posted');
+r = await report('V10', 3, 0, 0);
+ok(r.status === 422, 'a 0-0 tie is refused too');
 
 // 5. Wrong field, high score.
 r = await report('V03', 4, 6, 4);
@@ -57,9 +66,9 @@ ok(r.status === 401, 'staff list needs the passcode');
 // 7. Staff review.
 const reps = await list();
 const heldTie = reps.find((x) => x.game_id === 'V02' && x.status === 'held');
-ok(!!heldTie && heldTie.flags.includes('tie'), 'held tie shows its flag');
-r = await staff({ action: 'approve', id: heldTie.id });
-ok(r.status === 400, 'approving a tied score as-is is refused');
+ok(!!heldTie && heldTie.flags.includes('high-score'), 'held report shows its flag');
+r = await staff({ action: 'approve', id: heldTie.id, a: 5, b: 5 });
+ok(r.status === 400, 'approving a tied score is refused');
 r = await staff({ action: 'approve', id: heldTie.id, a: 6, b: 5 });
 ok(r.status === 200 && (await state()).scores.V02.a === 6, 'approve with a corrected score posts it');
 r = await staff({ action: 'approve', id: heldTie.id });

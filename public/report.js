@@ -146,14 +146,19 @@ $('#r-form').addEventListener('submit', async (e) => {
       signal: AbortSignal.timeout(15000),
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || 'Could not send.');
+    if (!r.ok) { const er = new Error(data.error || 'Could not send.'); er.code = data.code; throw er; }
     sent[current.id] = { a, b, outcome: data.outcome === 'held' ? 'held' : 'published', at: Date.now() };
     saveSent();
     dlg.close();
     render();
     toast(data.outcome === 'held' ? 'Received. Staff will confirm it.' : 'Sent. Thank you!');
   } catch (err) {
-    $('#r-err').textContent = `${err.message || 'Could not send.'} Your score is still here. Tap Send to try again.`;
+    if (err.code === 'tie') {
+      setStep('enter');
+      $('#r-err').innerHTML = `${esc(err.message).replace('614-522-9419', '<a href="tel:6145229419">614-522-9419</a>')}`;
+    } else {
+      $('#r-err').textContent = `${err.message || 'Could not send.'} Your score is still here. Tap Send to try again.`;
+    }
   } finally {
     busy = false;
     btn.disabled = false;
