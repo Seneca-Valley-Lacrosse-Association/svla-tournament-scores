@@ -11,10 +11,15 @@ import { json } from '../lib/http.js';
 import {
   findByClientId, reportsForGame, countRecentByIp, insertReport, updateReport, supersedeOthers, audit, ReportsUnavailable,
 } from '../lib/reports-db.js';
-import { assess, toScore, MAX_REPORTS_PER_GAME, MAX_REPORTS_PER_IP_10MIN } from '../lib/report-rules.js';
+import { assess, toScore, isScoreLocked, MAX_REPORTS_PER_GAME, MAX_REPORTS_PER_IP_10MIN } from '../lib/report-rules.js';
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
 const CALL = 'Please call or text Stretch at the number on the sheet, or write the score on the paper log.';
+// Shown when a score has been on the board for more than 20 minutes. The page turns the number into call and text links.
+const LOCKED = {
+  error: 'This score is locked. If you see a mistake, please call or text Stretch at 614-522-9419.',
+  code: 'locked',
+};
 const clientIp = (req) => (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
 const hashIp = (ip) => createHash('sha256').update(`svla-report:${ip}`).digest('hex').slice(0, 16);
 
@@ -69,6 +74,13 @@ export async function POST(request) {
     const sameAsPrior = prior.some((r) => r.score_a === a && r.score_b === b);
     if (sameAsBoard || sameAsPrior) return json({ ok: true, outcome: 'duplicate' }, 200, NO_STORE);
 
+    // Once a score has been up for more than 20 minutes it is locked for table workers (new reports and
+    // corrections alike). Staff can still change it from the Scores and Reports tabs.
+    if (isScoreLocked(all)) {
+      await audit({ actor: 'table', action: 'locked_rejected', game_id: gameId, detail: { a, b, field, correction } });
+      return json(LOCKED, 423, NO_STORE);
+    }
+
     // A correction replaces a score that came from a table report. If a staff member set or changed the score,
     // it is not replaced automatically; the correction waits in the Reports tab like any other conflict.
     const autoCorrect = correction && existing?.status === 'final' && existing.source === 'table' && !!existing.reportId;
@@ -85,6 +97,7 @@ export async function POST(request) {
       rec = await insertReport(row);
     } catch (e) {
       if (e.code === 'UNIQUE') return json({ ok: true, outcome: 'held' }, 200, NO_STORE); // raced with its own retry
+      if (e.code === 'LOCKED') return json(LOCKED, 423, NO_STORE); // the database lock caught it (backup to the check above)
       throw e;
     }
 
