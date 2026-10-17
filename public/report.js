@@ -23,7 +23,11 @@ try { sent = JSON.parse(store.get(SENT_KEY) || '{}'); } catch { sent = {}; }
 const saveSent = () => store.set(SENT_KEY, JSON.stringify(sent));
 // A report sent from this phone shows as sent for a short while, until the shared scoreboard catches up.
 // Held reports (waiting for staff) show for the full hour. Staff can undo or fix a score, so the server wins after that.
-const recent = (m) => m && Date.now() - (m.at || 0) < (m.outcome === 'held' ? SHOW_FINISHED_MS : 2 * 60 * 1000);
+// The scoreboard is the source of truth. This phone's own record only covers two gaps:
+//  - bridged: a score sent a moment ago, before the shared board has caught up (2 minutes)
+//  - waiting: a score sent that staff are still reviewing (30 minutes, note only; the game stays on the list)
+const bridged = (g) => { const m = sent[g.id]; return !!m && m.outcome !== 'held' && Date.now() - (m.at || 0) < 2 * 60 * 1000; };
+const waiting = (g) => { const m = sent[g.id]; return !!m && m.outcome === 'held' && Date.now() - (m.at || 0) < 30 * 60 * 1000 && state.scores[g.id]?.status !== 'final'; };
 const newId = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : `r${Date.now()}${Math.random().toString(16).slice(2)}`);
 
 // A game is overdue once its 50-minute slot has ended and it still has no score. Only on event day.
@@ -61,11 +65,11 @@ function card(g, reported, late = false) {
   const A = esc(sched.teams[g.a]);
   const B = esc(sched.teams[g.b]);
   const s = state.scores[g.id];
-  const mine = recent(sent[g.id]) ? sent[g.id] : null;
-  const shown = mine || (s?.status === 'final' ? s : null);
+  const shown = s?.status === 'final' ? s : bridged(g) ? sent[g.id] : null;
   const done = !!shown;
-  const note = mine?.outcome === 'held'
-    ? '<span class="sub note">Received. A staff member will confirm it.</span>'
+  const held = !done && waiting(g);
+  const note = held
+    ? `<span class="sub note">Received ${sent[g.id].a}\u2013${sent[g.id].b}. A staff member will confirm it.</span>`
     : done ? '<span class="sub">Final score sent</span>' : '';
   return `<article class="game${done ? ' sent' : ''}${late ? ' late' : ''}" style="--fc:${FIELD_COLORS[g.field]}">
     <div>
@@ -76,7 +80,7 @@ function card(g, reported, late = false) {
       <span class="pill ${done ? 'final' : late ? 'late' : 'up'}">${done ? 'Final' : late ? 'Score needed' : esc(sched.slots[g.slot])}</span>
       <span class="sub">${done || late ? `${esc(sched.slots[g.slot])} \u00b7 ` : ''}${g.div}</span>
       ${note}
-      ${reported ? `<button class="btn alt edit-btn" data-fix="${g.id}">Edit score</button>` : done ? '' : `<button class="btn edit-btn" data-report="${g.id}">Report final score</button>`}
+      ${reported || held ? `<button class="btn alt edit-btn" data-fix="${g.id}">Edit score</button>` : done ? '' : `<button class="btn edit-btn" data-report="${g.id}">Report final score</button>`}
     </div>
   </article>`;
 }
@@ -85,13 +89,13 @@ function render() {
   if (!sched) return;
   $('#field-title').textContent = `Field ${field}`;
   const games = sched.games.filter((g) => g.field === field && !g.cancelled).sort((x, y) => x.slot - y.slot);
-  const isDone = (g) => recent(sent[g.id]) || state.scores[g.id]?.status === 'final';
+  const isDone = (g) => state.scores[g.id]?.status === 'final' || bridged(g);
   const pending = games.filter((g) => !isDone(g));
-  const overdue = pending.filter(isOverdue); // slot is over and no score yet, always shown first
-  const todo = pending.filter((g) => !isOverdue(g)).slice(0, 3);
+  const overdue = pending.filter((g) => isOverdue(g) && !waiting(g)); // slot is over and no score yet, shown first
+  const todo = pending.filter((g) => !overdue.includes(g)).slice(0, 3);
   // Finished games stay listed for an hour after their score was posted, newest first, then drop off.
   const postedAt = (g) => {
-    const mine = recent(sent[g.id]) ? sent[g.id].at : 0;
+    const mine = bridged(g) ? sent[g.id].at : 0;
     const board = Date.parse(state.scores[g.id]?.updatedAt || '') || 0;
     return Math.max(mine, board);
   };
@@ -151,7 +155,7 @@ function openReport(id, fix = false) {
   $('#r-a').textContent = sched.teams[current.a];
   $('#r-b').textContent = sched.teams[current.b];
   // Fixing starts from the score that is showing now, so only the wrong number needs changing.
-  const known = fix ? (recent(sent[id]) ? sent[id] : (state.scores[id]?.status === 'final' ? state.scores[id] : null)) : null;
+  const known = fix ? ((bridged(current) || waiting(current)) ? sent[id] : state.scores[id]?.status === 'final' ? state.scores[id] : null) : null;
   $('#r-ain').value = known ? known.a : 0;
   $('#r-bin').value = known ? known.b : 0;
   $('#r-hint').innerHTML = fix
