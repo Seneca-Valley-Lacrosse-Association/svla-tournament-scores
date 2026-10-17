@@ -16,6 +16,7 @@ let current = null; // game being reported
 let clientId = null; // one id per attempt, so a retry can never create a duplicate
 let step = 'enter';
 let busy = false;
+let fixing = false; // true while correcting a score that was already reported
 
 try { sent = JSON.parse(store.get(SENT_KEY) || '{}'); } catch { sent = {}; }
 const saveSent = () => store.set(SENT_KEY, JSON.stringify(sent));
@@ -50,7 +51,7 @@ function card(g, reported) {
       <span class="pill ${done ? 'final' : 'up'}">${done ? 'Final' : esc(sched.slots[g.slot])}</span>
       <span class="sub">${g.div}</span>
       ${note}
-      ${reported || done ? '' : `<button class="btn edit-btn" data-report="${g.id}">Report final score</button>`}
+      ${reported ? `<button class="btn alt edit-btn" data-fix="${g.id}">Edit score</button>` : done ? '' : `<button class="btn edit-btn" data-report="${g.id}">Report final score</button>`}
     </div>
   </article>`;
 }
@@ -70,7 +71,7 @@ function render() {
   }
   if (finished.length) {
     html += `<section class="slot"><div class="slot-head"><h2>Recently reported</h2></div>${finished.map((g) => card(g, true)).join('')}
-      <p class="note">Wrong score? Call Stretch at 614-522-9419 and we will fix it.</p></section>`;
+      <p class="note">Entered the wrong score? Tap <strong>Edit score</strong> and send the right one. It replaces the old score right away. Need more help? Call Stretch at 614-522-9419.</p></section>`;
   }
   $('#app').innerHTML = html;
 }
@@ -100,15 +101,22 @@ function setStep(next) {
   $('#r-err').textContent = '';
 }
 
-function openReport(id) {
+function openReport(id, fix = false) {
   current = sched.games.find((g) => g.id === id);
+  fixing = fix;
   clientId = newId();
   $('#r-title').textContent = `${sched.teams[current.a]} vs ${sched.teams[current.b]}`;
   $('#r-sub').textContent = `${current.div} · ${sched.slots[current.slot]} · Field ${current.field}`;
   $('#r-a').textContent = sched.teams[current.a];
   $('#r-b').textContent = sched.teams[current.b];
-  $('#r-ain').value = 0;
-  $('#r-bin').value = 0;
+  // Fixing starts from the score that is showing now, so only the wrong number needs changing.
+  const known = fix ? (recent(sent[id]) ? sent[id] : (state.scores[id]?.status === 'final' ? state.scores[id] : null)) : null;
+  $('#r-ain').value = known ? known.a : 0;
+  $('#r-bin').value = known ? known.b : 0;
+  $('#r-hint').innerHTML = fix
+    ? 'This <strong>replaces</strong> the score that was sent before. Check it, then send.'
+    : 'This is the <strong>final</strong> score for the game. Check it, then send.';
+  $('#r-sub').textContent = `${fix ? 'Edit score \u00b7 ' : ''}${current.div} \u00b7 ${sched.slots[current.slot]} \u00b7 Field ${current.field}`;
   setStep('enter');
   dlg.showModal();
 }
@@ -142,7 +150,7 @@ $('#r-form').addEventListener('submit', async (e) => {
     const r = await fetch('/api/report', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameId: current.id, field, a, b, clientId }),
+      body: JSON.stringify({ gameId: current.id, field, a, b, clientId, correction: fixing }),
       signal: AbortSignal.timeout(15000),
     });
     const data = await r.json().catch(() => ({}));
@@ -151,7 +159,7 @@ $('#r-form').addEventListener('submit', async (e) => {
     saveSent();
     dlg.close();
     render();
-    toast(data.outcome === 'held' ? 'Received. Staff will confirm it.' : 'Sent. Thank you!');
+    toast(data.outcome === 'held' ? 'Received. Staff will confirm it.' : fixing ? 'Score updated. Thank you!' : 'Sent. Thank you!');
   } catch (err) {
     if (err.code === 'tie') {
       setStep('enter');
@@ -177,7 +185,9 @@ function toast(msg) {
 
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-report]');
-  if (b) openReport(b.dataset.report);
+  if (b) { openReport(b.dataset.report); return; }
+  const f = e.target.closest('[data-fix]');
+  if (f) openReport(f.dataset.fix, true);
 });
 
 /* ---------- start ---------- */

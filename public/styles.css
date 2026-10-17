@@ -208,6 +208,7 @@ dialog { max-height: 92vh; overflow-y: auto; }
 .pill-st { font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #e8eef5; color: var(--navy); }
 .pill-st.st-held { background: #fff4e8; color: var(--pumpkin-deep); }
 .pill-st.st-published, .pill-st.st-approved { background: #e6f4ea; color: #1b6b32; }
+.pill-st.st-superseded { background: #eceff3; color: #5b6572; }
 .pill-st.st-rejected, .pill-st.st-undone { background: #f3e8e8; color: #8a2a2a; }
 .flag { display: inline-block; background: #fff4e8; color: var(--pumpkin-deep); font-weight: 700; font-size: 13px; padding: 3px 9px; border-radius: 999px; margin: 2px 4px 2px 0; }
 .rep-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }

@@ -119,7 +119,7 @@ function renderReports() {
     return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
   };
   const shownScore = (r) => [r.approved_a ?? r.score_a, r.approved_b ?? r.score_b];
-  const STATUS = { held: 'Waiting for you', published: 'Posted', approved: 'Approved', rejected: 'Rejected', undone: 'Undone' };
+  const STATUS = { held: 'Waiting for you', published: 'Posted', approved: 'Approved', rejected: 'Rejected', undone: 'Undone', superseded: 'Replaced' };
 
   // One row per report, newest first inside its game.
   const row = (r, g, newest, multi) => {
@@ -138,7 +138,7 @@ function renderReports() {
     return `<div class="rep-row${newest && multi ? ' newest' : ''}">
       <div class="rep-top"><strong class="rep-score">${esc(name(g.a))} ${a} – ${b} ${esc(name(g.b))}</strong>
         ${newest && multi ? '<span class="tag-new">Newest</span>' : ''}<span class="pill-st st-${r.status}">${STATUS[r.status] || esc(r.status)}</span></div>
-      <div class="sub">Sent ${esc(clock(r.created_at))} (${esc(timeAgo(r.created_at) || '')})${edited ? ` · you changed it from ${r.score_a}–${r.score_b}` : ''}</div>
+      <div class="sub">Sent ${esc(clock(r.created_at))} (${esc(timeAgo(r.created_at) || '')})${edited ? ` · you changed it from ${r.score_a}–${r.score_b}` : ''}${r.review_note ? ` · ${esc(r.review_note)}` : ''}</div>
       ${flags ? `<div>${flags}</div>` : ''}
       ${actions ? `<div class="rep-actions">${actions}</div>` : ''}</div>`;
   };

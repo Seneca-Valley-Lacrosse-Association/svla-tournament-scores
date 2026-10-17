@@ -3,7 +3,7 @@
 //   STORE=file REPORTS_STORE=file ORGANIZER_PASSCODE=test PORT=3000 node scripts/dev-server.mjs &
 //   node scripts/test-reports.mjs
 import { assess, slotIndexNow } from '../lib/report-rules.js';
-import { SLOTS } from '../lib/schedule.js';
+import { SLOTS, GAMES } from '../lib/schedule.js';
 
 const base = process.env.BASE || 'http://localhost:3000';
 let failures = 0;
@@ -13,7 +13,11 @@ const post = async (path, body, headers = {}) => {
   const r = await fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
   return { status: r.status, data: await r.json().catch(() => ({})) };
 };
-const report = (gameId, field, a, b, clientId) => post('/api/report', { gameId, field, a, b, clientId: clientId || `test-${Math.random().toString(36).slice(2)}-${Date.now()}` });
+// Games already used by the checks above, so the correction checks start from a clean game.
+const s_used = () => ['V01', 'V02', 'V03', 'V04', 'V05', 'V06', 'V07', 'V09', 'V10'];
+const phone = () => ({ 'x-forwarded-for': `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` });
+const report = (gameId, field, a, b, clientId) => post('/api/report', { gameId, field, a, b, clientId: clientId || `test-${Math.random().toString(36).slice(2)}-${Date.now()}` }, phone());
+const correct = (gameId, field, a, b) => post('/api/report', { gameId, field, a, b, correction: true, clientId: `fix-${Math.random().toString(36).slice(2)}-${Date.now()}` }, phone());
 const staff = (body) => post('/api/reports', body, { 'x-passcode': 'test' });
 const state = async () => (await fetch(base + '/api/state?fresh=1')).json();
 const list = async () => (await staff({ action: 'list' })).data.reports;
@@ -88,8 +92,46 @@ r = await staff({ action: 'undo', id: v06.id });
 ok(r.status === 409, 'undo is refused after a scorekeeper changed that score');
 
 // 9. Per-game report limit.
-for (let i = 0; i < 6; i++) r = await report('V07', 3, 10 + i, 1);
+for (let i = 0; i < 8; i++) r = await report('V07', 3, 10 + i, 1);
 ok(r.status === 429, 'too many reports for one game are refused');
+
+// 11. A table worker can fix their own wrong score; it replaces the old one at once.
+const usedIds = new Set(s_used());
+const f1 = GAMES.filter((g) => g.field === 1 && !usedIds.has(g.id)).map((g) => g.id);
+const [fx1, fx2, fx3] = f1;
+r = await report(fx1, 1, 5, 3);
+ok(r.data.outcome === 'published', 'fix test: first report posts');
+r = await correct(fx1, 1, 3, 5);
+ok(r.data.outcome === 'published', 'a correction posts straight away');
+ok((await state()).scores[fx1].a === 3 && (await state()).scores[fx1].b === 5, 'the corrected score is on the board');
+const fxRows = (await list()).filter((x) => x.game_id === fx1);
+ok(fxRows.find((x) => x.score_a === 5)?.status === 'superseded', 'the old report is marked replaced');
+ok(fxRows.find((x) => x.score_a === 3)?.status === 'published' && /5.3/.test(fxRows.find((x) => x.score_a === 3)?.review_note || ''), 'the new report is posted and notes what it corrected');
+r = await correct(fx1, 1, 3, 5);
+ok(r.data.outcome === 'duplicate', 'sending the same corrected score again is harmless');
+r = await correct(fx1, 1, 4, 4);
+ok(r.status === 422 && r.data.code === 'tie', 'a correction to a tie is refused');
+const stale = (await list()).filter((x) => x.game_id === fx1 && x.status === 'published');
+ok(stale.length === 1, 'only the newest report for the game stays posted');
+r = await staff({ action: 'undo', id: fxRows.find((x) => x.score_a === 5).id });
+ok(r.status === 409, 'a replaced report cannot be undone');
+
+// A correction never overwrites a score a staff member set.
+r = await report(fx2, 1, 4, 1);
+await post('/api/score', { gameId: fx2, status: 'final', a: 7, b: 1 }, { 'x-passcode': 'test' });
+r = await correct(fx2, 1, 2, 1);
+ok(r.data.outcome === 'held', 'a correction over a staff score waits for review');
+ok((await state()).scores[fx2].a === 7, 'the staff score stays on the board');
+
+// Approving a held correction replaces the earlier posted report.
+r = await report(fx3, 1, 9, 2);
+r = await correct(fx3, 1, 40, 2);
+ok(r.data.outcome === 'held', 'a flagged correction (high score) is held');
+ok((await state()).scores[fx3].a === 9, 'the held correction does not change the board');
+const heldFix = (await list()).find((x) => x.game_id === fx3 && x.status === 'held');
+r = await staff({ action: 'approve', id: heldFix.id, a: 8, b: 2 });
+ok(r.status === 200 && (await state()).scores[fx3].a === 8, 'approving it posts the corrected score');
+ok((await list()).filter((x) => x.game_id === fx3 && x.status === 'published').length === 0, 'the earlier report is marked replaced after approval');
 
 // 10. Time window rule (pure function): only on event day.
 const day = (iso) => new Date(iso);

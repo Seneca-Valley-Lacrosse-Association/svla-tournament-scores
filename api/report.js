@@ -9,7 +9,7 @@ import { readState } from '../lib/store.js';
 import { publishScore } from '../lib/publish.js';
 import { json } from '../lib/http.js';
 import {
-  findByClientId, reportsForGame, countRecentByIp, insertReport, updateReport, audit, ReportsUnavailable,
+  findByClientId, reportsForGame, countRecentByIp, insertReport, updateReport, supersedeOthers, audit, ReportsUnavailable,
 } from '../lib/reports-db.js';
 import { assess, toScore, MAX_REPORTS_PER_GAME, MAX_REPORTS_PER_IP_10MIN } from '../lib/report-rules.js';
 
@@ -24,6 +24,7 @@ export async function POST(request) {
 
   const { gameId, clientId } = body || {};
   const field = Number(body?.field);
+  const correction = body?.correction === true; // a table worker fixing a score they (or a teammate) already sent
   const a = toScore(body?.a);
   const b = toScore(body?.b);
   if (typeof gameId !== 'string' || typeof clientId !== 'string' || clientId.length < 8 || clientId.length > 64) {
@@ -65,10 +66,16 @@ export async function POST(request) {
     const sameAsPrior = prior.some((r) => r.score_a === a && r.score_b === b);
     if (sameAsBoard || sameAsPrior) return json({ ok: true, outcome: 'duplicate' }, 200, NO_STORE);
 
-    const flags = assess({ game, field, a, b, existing, prior, slots: SLOTS });
+    // A correction replaces a score that came from a table report. If a staff member set or changed the score,
+    // it is not replaced automatically; the correction waits in the Reports tab like any other conflict.
+    const autoCorrect = correction && existing?.status === 'final' && existing.source === 'table' && !!existing.reportId;
+    const flags = autoCorrect
+      ? assess({ game, field, a, b, existing: undefined, prior: [], slots: SLOTS })
+      : assess({ game, field, a, b, existing, prior, slots: SLOTS });
     const row = {
       client_id: clientId, game_id: gameId, field, score_a: a, score_b: b, ip_hash: ipHash,
       status: flags.length ? 'held' : 'published', flags,
+      ...(correction && existing?.status === 'final' ? { review_note: `Correction of ${existing.a}\u2013${existing.b}` } : {}),
     };
     let rec;
     try {
@@ -88,8 +95,13 @@ export async function POST(request) {
         outcome = 'held';
       }
     }
+    if (outcome === 'published' && autoCorrect) {
+      try { await supersedeOthers(gameId, rec.id); } catch (e) { console.error('supersede failed', e.message); }
+    }
     await audit({
-      actor: 'table', action: outcome === 'published' ? 'auto_published' : 'held', report_id: rec.id, game_id: gameId,
+      actor: 'table',
+      action: `${correction ? 'correction_' : ''}${outcome === 'published' ? (correction ? 'published' : 'auto_published') : 'held'}`,
+      report_id: rec.id, game_id: gameId,
       detail: { a, b, field, flags: outcome === 'held' && !flags.length ? ['publish-failed'] : flags },
     });
     return json({ ok: true, outcome }, 200, NO_STORE);

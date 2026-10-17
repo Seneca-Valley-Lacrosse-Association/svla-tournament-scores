@@ -4,7 +4,7 @@
 import { checkPasscode } from '../lib/auth.js';
 import { json } from '../lib/http.js';
 import { publishScore, unpublishScore, ScoreChanged } from '../lib/publish.js';
-import { getReport, updateReport, listReports, audit, ReportsUnavailable } from '../lib/reports-db.js';
+import { getReport, updateReport, listReports, supersedeOthers, audit, ReportsUnavailable } from '../lib/reports-db.js';
 import { toScore } from '../lib/report-rules.js';
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
@@ -33,6 +33,7 @@ export async function POST(request) {
       if (a === b) return json({ error: 'A final score cannot be tied. Tap Edit score and enter the real final score.' }, 400, NO_STORE);
       await publishScore(rep.game_id, a, b, rep.id);
       await updateReport(rep.id, { status: 'approved', approved_a: a, approved_b: b, reviewed_at: now() });
+      await supersedeOthers(rep.game_id, rep.id);
       await audit({ actor: 'staff', action: a === rep.score_a && b === rep.score_b ? 'approved' : 'approved_edited', report_id: rep.id, game_id: rep.game_id, detail: { a, b, reported: [rep.score_a, rep.score_b] } });
       return json({ ok: true }, 200, NO_STORE);
     }
