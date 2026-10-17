@@ -196,7 +196,19 @@ dialog { max-height: 92vh; overflow-y: auto; }
 .field-btn { text-align: center; text-decoration: none; font-size: 22px; padding: 22px 12px; border-left: 8px solid var(--fc); }
 .confirm-line { font-size: 22px; line-height: 1.5; margin: 6px 0 4px; }
 .confirm-line strong { font-size: 34px; margin-left: 8px; color: var(--navy); }
-.report-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; margin-bottom: 10px; }
+.report-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; margin-bottom: 12px; border-left: 8px solid var(--fc, var(--line)); }
+.rep-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rep-game { font-size: 18px; font-weight: 800; color: var(--navy); margin: 2px 0; }
+.rep-legend { margin: 8px 0 4px; }
+.rep-row { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }
+.rep-row.newest { background: #fffaf2; border-radius: 8px; padding: 10px; margin-left: -4px; margin-right: -4px; }
+.rep-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rep-score { font-size: 16px; }
+.tag-new { background: var(--navy); color: #fff; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 999px; }
+.pill-st { font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #e8eef5; color: var(--navy); }
+.pill-st.st-held { background: #fff4e8; color: var(--pumpkin-deep); }
+.pill-st.st-published, .pill-st.st-approved { background: #e6f4ea; color: #1b6b32; }
+.pill-st.st-rejected, .pill-st.st-undone { background: #f3e8e8; color: #8a2a2a; }
 .flag { display: inline-block; background: #fff4e8; color: var(--pumpkin-deep); font-weight: 700; font-size: 13px; padding: 3px 9px; border-radius: 999px; margin: 2px 4px 2px 0; }
 .rep-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .badge { display: inline-block; min-width: 22px; padding: 1px 7px; margin-left: 6px; border-radius: 999px; background: var(--pumpkin-deep); color: #fff; font-size: 13px; font-weight: 800; line-height: 20px; }

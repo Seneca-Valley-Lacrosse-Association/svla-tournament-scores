@@ -114,44 +114,65 @@ const FLAG_TEXT = {
 
 function renderReports() {
   const name = (code) => sched.teams[code] || code;
-  const line = (r, g) => {
-    const edited = r.approved_a != null && (r.approved_a !== r.score_a || r.approved_b !== r.score_b);
-    const a = r.approved_a ?? r.score_a;
-    const b = r.approved_b ?? r.score_b;
-    const text = g ? `${esc(name(g.a))} ${a} \u2013 ${b} ${esc(name(g.b))}` : `${esc(r.game_id)} ${a} \u2013 ${b}`;
-    return edited ? `${text} <small>(reported ${r.score_a}\u2013${r.score_b})</small>` : text;
+  const clock = (iso) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
   };
-  const when = (iso) => timeAgo(iso) || '';
-  const card = (r) => {
-    const g = sched.games.find((x) => x.id === r.game_id);
-    const flags = (r.flags || []).map((f) => `<span class="flag">${esc(FLAG_TEXT[f] || f)}</span>`).join('');
-    const where = g ? `${g.div} \u00b7 ${esc(sched.slots[g.slot])} \u00b7 Field ${g.field}` : '';
-    const live = state.scores[r.game_id];
-    const onBoard = live?.status === 'final' ? `<span class="sub">On the board now: ${live.a}\u2013${live.b}</span>` : '';
+  const shownScore = (r) => [r.approved_a ?? r.score_a, r.approved_b ?? r.score_b];
+  const STATUS = { held: 'Waiting for you', published: 'Posted', approved: 'Approved', rejected: 'Rejected', undone: 'Undone' };
+
+  // One row per report, newest first inside its game.
+  const row = (r, g, newest, multi) => {
+    const [a, b] = shownScore(r);
+    const edited = r.approved_a != null && (r.approved_a !== r.score_a || r.approved_b !== r.score_b);
+    const flags = r.status === 'held' ? (r.flags || []).map((f) => `<span class="flag">${esc(FLAG_TEXT[f] || f)}</span>`).join('') : '';
     let actions = '';
     if (r.status === 'held') {
-      actions = `<button class="btn small" data-rapprove="${r.id}">Approve</button>
+      const tie = r.score_a === r.score_b;
+      actions = `${tie ? '' : `<button class="btn small" data-rapprove="${r.id}">${multi ? 'Use this score' : 'Approve'}</button>`}
         <button class="btn alt small" data-rpedit="${r.id}">Edit score</button>
         <button class="btn danger small" data-rpreject="${r.id}">Reject</button>`;
     } else if (r.status === 'published' || r.status === 'approved') {
       actions = `<button class="btn danger small" data-rpundo="${r.id}">Undo</button>`;
     }
-    return `<div class="report-card"><strong>${line(r, g)}</strong>
-      <div class="sub">${where} \u00b7 sent ${esc(when(r.created_at))}</div>
-      <div>${flags}</div>${onBoard}
+    return `<div class="rep-row${newest && multi ? ' newest' : ''}">
+      <div class="rep-top"><strong class="rep-score">${esc(name(g.a))} ${a} – ${b} ${esc(name(g.b))}</strong>
+        ${newest && multi ? '<span class="tag-new">Newest</span>' : ''}<span class="pill-st st-${r.status}">${STATUS[r.status] || esc(r.status)}</span></div>
+      <div class="sub">Sent ${esc(clock(r.created_at))} (${esc(timeAgo(r.created_at) || '')})${edited ? ` · you changed it from ${r.score_a}–${r.score_b}` : ''}</div>
+      ${flags ? `<div>${flags}</div>` : ''}
       ${actions ? `<div class="rep-actions">${actions}</div>` : ''}</div>`;
   };
-  const held = reports.filter((r) => r.status === 'held');
-  const posted = reports.filter((r) => r.status === 'published' || r.status === 'approved');
-  const other = reports.filter((r) => r.status === 'rejected' || r.status === 'undone');
-  let html = `<p class="note">Clean scores from the scoring tables post automatically. Anything unusual waits here for you. Held reports are <strong>not</strong> shown to parents until approved.</p>`;
+
+  const gameCardHtml = (gameId, list) => {
+    const g = sched.games.find((x) => x.id === gameId);
+    if (!g) return '';
+    const sorted = [...list].sort((x, y) => (y.created_at || '').localeCompare(x.created_at || ''));
+    const multi = sorted.length > 1;
+    const live = state.scores[gameId];
+    const onBoard = live?.status === 'final' ? `On the board now: <strong>${live.a}–${live.b}</strong>` : 'Nothing on the board yet';
+    return `<div class="report-card" style="--fc:${FIELD_COLORS[g.field]}">
+      <div class="rep-head"><span class="fieldtag"><i></i>Field ${g.field}</span> <span class="sub">${esc(g.div)} · ${esc(sched.slots[g.slot])}</span></div>
+      <div class="rep-game">${esc(name(g.a))} vs ${esc(name(g.b))}</div>
+      <div class="sub">${onBoard}${multi ? ` · ${sorted.length} reports for this game` : ''}</div>
+      ${sorted.map((r, i) => row(r, g, i === 0, multi)).join('')}</div>`;
+  };
+
+  // Group reports by game, then sort cards by their newest report.
+  const byGame = new Map();
+  for (const r of reports) (byGame.get(r.game_id) || byGame.set(r.game_id, []).get(r.game_id)).push(r);
+  const newestAt = (list) => list.reduce((m, r) => ((r.created_at || '') > m ? r.created_at : m), '');
+  const groups = [...byGame.entries()].sort((x, y) => newestAt(y[1]).localeCompare(newestAt(x[1])));
+  const needs = groups.filter(([, l]) => l.some((r) => r.status === 'held'));
+  const posted = groups.filter(([, l]) => !l.some((r) => r.status === 'held') && l.some((r) => r.status === 'published' || r.status === 'approved'));
+  const closed = groups.filter(([, l]) => !l.some((r) => ['held', 'published', 'approved'].includes(r.status)));
+  const heldCount = reports.filter((r) => r.status === 'held').length;
+
+  let html = `<p class="note">Clean scores from the scoring tables post automatically. Anything unusual waits here for you. Held reports are <strong>not</strong> shown to parents until approved. When a game has more than one report, the newest is listed first.</p>`;
+  html += `<div class="legend rep-legend">${Object.entries(sched.fields).map(([n, nm]) => `<div style="--fc:${FIELD_COLORS[n]}"><i></i><span><strong>Field ${n}</strong></span></div>`).join('')}</div>`;
   if (reportsErr) html += `<p class="err">${esc(reportsErr)}</p>`;
-  html += `<h2 class="rep-h">Needs review (${held.length})</h2>${held.length ? held.map(card).join('') : '<p class="empty">Nothing waiting. \ud83c\udf83</p>'}`;
-  html += `<h2 class="rep-h">Posted from tables (${posted.length})</h2>${posted.length ? posted.map(card).join('') : '<p class="empty">No table reports yet.</p>'}`;
-  if (other.length) html += `<details class="card"><summary>Rejected and undone (${other.length})</summary>${other.map((r) => {
-    const g = sched.games.find((x) => x.id === r.game_id);
-    return `<div class="trow"><span>${line(r, g)} <small>${esc(r.status)}</small></span></div>`;
-  }).join('')}</details>`;
+  html += `<h2 class="rep-h">Needs review (${heldCount})</h2>${needs.length ? needs.map(([id, l]) => gameCardHtml(id, l)).join('') : '<p class="empty">Nothing waiting. 🎃</p>'}`;
+  html += `<h2 class="rep-h">Posted from tables (${posted.length})</h2>${posted.length ? posted.map(([id, l]) => gameCardHtml(id, l)).join('') : '<p class="empty">No table reports yet.</p>'}`;
+  if (closed.length) html += `<h2 class="rep-h">Rejected and undone (${closed.length})</h2>${closed.map(([id, l]) => gameCardHtml(id, l)).join('')}`;
   return html;
 }
 

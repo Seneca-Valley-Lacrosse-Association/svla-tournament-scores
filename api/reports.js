@@ -30,6 +30,7 @@ export async function POST(request) {
       const a = body.a === undefined ? rep.score_a : toScore(body.a);
       const b = body.b === undefined ? rep.score_b : toScore(body.b);
       if (a === null || b === null) return json({ error: 'Scores must be whole numbers from 0 to 99.' }, 400, NO_STORE);
+      if (a === b) return json({ error: 'A final score cannot be tied. Tap Edit score and enter the real final score.' }, 400, NO_STORE);
       await publishScore(rep.game_id, a, b, rep.id);
       await updateReport(rep.id, { status: 'approved', approved_a: a, approved_b: b, reviewed_at: now() });
       await audit({ actor: 'staff', action: a === rep.score_a && b === rep.score_b ? 'approved' : 'approved_edited', report_id: rep.id, game_id: rep.game_id, detail: { a, b, reported: [rep.score_a, rep.score_b] } });

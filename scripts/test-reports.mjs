@@ -58,6 +58,8 @@ ok(r.status === 401, 'staff list needs the passcode');
 const reps = await list();
 const heldTie = reps.find((x) => x.game_id === 'V02' && x.status === 'held');
 ok(!!heldTie && heldTie.flags.includes('tie'), 'held tie shows its flag');
+r = await staff({ action: 'approve', id: heldTie.id });
+ok(r.status === 400, 'approving a tied score as-is is refused');
 r = await staff({ action: 'approve', id: heldTie.id, a: 6, b: 5 });
 ok(r.status === 200 && (await state()).scores.V02.a === 6, 'approve with a corrected score posts it');
 r = await staff({ action: 'approve', id: heldTie.id });
