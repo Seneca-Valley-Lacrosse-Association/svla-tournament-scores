@@ -174,6 +174,9 @@ function renderReports() {
   html += `<h2 class="rep-h">Needs review (${heldCount})</h2>${needs.length ? needs.map(([id, l]) => gameCardHtml(id, l)).join('') : '<p class="empty">Nothing waiting. 🎃</p>'}`;
   html += `<h2 class="rep-h">Posted from tables (${posted.length})</h2>${posted.length ? posted.map(([id, l]) => gameCardHtml(id, l)).join('') : '<p class="empty">No table reports yet.</p>'}`;
   if (closed.length) html += `<h2 class="rep-h">Rejected and undone (${closed.length})</h2>${closed.map(([id, l]) => gameCardHtml(id, l)).join('')}`;
+  html += `<div class="danger-zone"><h2 class="rep-h">Reset everything</h2>
+    <p class="note">Sets every game back to not started and deletes all table report history. The schedule and teams are not changed. This cannot be undone.</p>
+    <button class="btn danger" type="button" data-resetscores>Reset all scores and reports</button></div>`;
   return html;
 }
 
@@ -284,8 +287,10 @@ document.addEventListener('click', async (e) => {
   const rapprove = e.target.closest('[data-rapprove]');
   const rreject = e.target.closest('[data-rpreject]');
   const rundo = e.target.closest('[data-rpundo]');
+  const resetScores = e.target.closest('[data-resetscores]');
   const redit = e.target.closest('[data-rpedit]');
   const rgame = e.target.closest('[data-rgame]');
+  if (resetScores) return resetEverything();
   if (rapprove) return reportAction('approve', rapprove.dataset.rapprove);
   if (rreject) return reportAction('reject', rreject.dataset.rpreject, rreject, 'Tap again to reject');
   if (rundo) return reportAction('undo', rundo.dataset.rpundo, rundo, 'Tap again to undo');
@@ -308,6 +313,20 @@ document.addEventListener('click', async (e) => {
   } else return;
   render();
 });
+async function resetEverything() {
+  if (!window.confirm('Are you sure?\n\nThis sets EVERY score to zero (not started) and deletes ALL table report history. Parents will see an empty scoreboard. This cannot be undone.')) return;
+  if (!window.confirm('Last check: reset all scores and reports now?')) return;
+  try {
+    await api('/api/reports', { action: 'reset', confirm: 'RESET' });
+    setState(await fetchState(true));
+    await refreshReports();
+    render();
+    toast('Everything reset: all scores cleared, reports deleted');
+  } catch (err) {
+    if (err.status === 401) sessionExpired();
+    else toast(err.message, true);
+  }
+}
 async function reportAction(action, id, btn, armText, extra = {}) {
   if (btn && !confirmTap(btn, `${action}:${id}`, armText)) return;
   try {

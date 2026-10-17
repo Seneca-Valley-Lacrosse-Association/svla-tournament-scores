@@ -4,10 +4,10 @@
 import { checkPasscode } from '../lib/auth.js';
 import { json } from '../lib/http.js';
 import { publishScore, unpublishScore, ScoreChanged } from '../lib/publish.js';
-import { getReport, updateReport, listReports, insertReport, supersedeOthers, audit, ReportsUnavailable } from '../lib/reports-db.js';
+import { getReport, updateReport, listReports, insertReport, supersedeOthers, audit, clearAllReports, ReportsUnavailable } from '../lib/reports-db.js';
 import { SLOTS, FIELDS, TEAMS, GAMES, TABLE } from '../lib/schedule.js';
 import { applyEdits } from '../lib/apply.js';
-import { readState } from '../lib/store.js';
+import { readState, mutate } from '../lib/store.js';
 import { toScore } from '../lib/report-rules.js';
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
@@ -23,6 +23,14 @@ export async function POST(request) {
 
   try {
     if (action === 'list') return json({ ok: true, reports: await listReports(48) }, 200, NO_STORE);
+    // Sets every score back to zero (not started) and deletes all report history. The schedule and team edits are kept.
+    if (action === 'reset') {
+      if (body.confirm !== 'RESET') return json({ error: 'Reset was not confirmed.' }, 400, NO_STORE);
+      await mutate((s) => { s.scores = {}; return s; });
+      await clearAllReports();
+      await audit({ actor: 'staff', action: 'reset_all', detail: {} });
+      return json({ ok: true }, 200, NO_STORE);
+    }
     // An admin sets a game's score directly from the Reports tab. It is recorded as its own entry in the game's history.
     if (action === 'edit') {
       const a = toScore(body.a);

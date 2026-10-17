@@ -169,6 +169,14 @@ ok((await list()).filter((x) => x.game_id === ad2 && x.status === 'held').length
 r = await staff({ action: 'undo', id: (await list()).find((x) => x.game_id === ad2 && /Edited by admin/.test(x.review_note || '')).id });
 ok(r.status === 200 && !(await state()).scores[ad2], 'an admin edit can be undone');
 
+// 9b. Reset everything.
+r = await staff({ action: 'reset' });
+ok(r.status === 400, 'reset needs explicit confirmation');
+r = await post('/api/reports', { action: 'reset', confirm: 'RESET' });
+ok(r.status === 401, 'reset needs the passcode');
+r = await staff({ action: 'reset', confirm: 'RESET' });
+ok(r.status === 200 && Object.keys((await state()).scores).length === 0 && (await list()).length === 0, 'reset clears all scores and all reports');
+
 // 10. Time window rule (pure function): only on event day.
 const day = (iso) => new Date(iso);
 ok(slotIndexNow(SLOTS, day('2026-10-17T15:00:00Z')) === null, 'no time rule on other days');

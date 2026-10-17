@@ -220,3 +220,5 @@ dialog { max-height: 92vh; overflow-y: auto; }
 .late-h { color: #a12626; }
 
 .rep-edit { margin-left: auto; }
+
+.danger-zone { margin: 28px 0 8px; padding-top: 12px; border-top: 1px dashed #c33; }
