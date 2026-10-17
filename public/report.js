@@ -5,6 +5,7 @@ import { esc, store, applyEdits, fetchSchedule, fetchState, FIELD_COLORS } from 
 
 const $ = (s) => document.querySelector(s);
 const SENT_KEY = 'pc26-reported';
+const SHOW_FINISHED_MS = 60 * 60 * 1000; // how long a finished game stays under "Recently reported"
 const params = new URLSearchParams(location.search);
 const field = Number(params.get('field'));
 
@@ -21,8 +22,8 @@ let fixing = false; // true while correcting a score that was already reported
 try { sent = JSON.parse(store.get(SENT_KEY) || '{}'); } catch { sent = {}; }
 const saveSent = () => store.set(SENT_KEY, JSON.stringify(sent));
 // A report sent from this phone shows as sent for a short while, until the shared scoreboard catches up.
-// Held reports (waiting for staff) show for longer. Staff can undo or fix a score, so the server wins after that.
-const recent = (m) => m && Date.now() - (m.at || 0) < (m.outcome === 'held' ? 30 * 60 * 1000 : 2 * 60 * 1000);
+// Held reports (waiting for staff) show for the full hour. Staff can undo or fix a score, so the server wins after that.
+const recent = (m) => m && Date.now() - (m.at || 0) < (m.outcome === 'held' ? SHOW_FINISHED_MS : 2 * 60 * 1000);
 const newId = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : `r${Date.now()}${Math.random().toString(16).slice(2)}`);
 
 function fieldPicker() {
@@ -62,7 +63,16 @@ function render() {
   const games = sched.games.filter((g) => g.field === field && !g.cancelled).sort((x, y) => x.slot - y.slot);
   const isDone = (g) => recent(sent[g.id]) || state.scores[g.id]?.status === 'final';
   const todo = games.filter((g) => !isDone(g)).slice(0, 3);
-  const finished = games.filter(isDone).slice(-2).reverse();
+  // Finished games stay listed for an hour after their score was posted, newest first, then drop off.
+  const postedAt = (g) => {
+    const mine = recent(sent[g.id]) ? sent[g.id].at : 0;
+    const board = Date.parse(state.scores[g.id]?.updatedAt || '') || 0;
+    return Math.max(mine, board);
+  };
+  const finished = games
+    .filter((g) => isDone(g) && Date.now() - postedAt(g) <= SHOW_FINISHED_MS)
+    .sort((x, y) => postedAt(y) - postedAt(x))
+    .slice(0, 3);
   let html = '';
   if (todo.length) {
     html += `<section class="slot"><div class="slot-head"><h2>Next games</h2></div>${todo.map((g) => card(g, false)).join('')}</section>`;
@@ -70,8 +80,8 @@ function render() {
     html += '<p class="empty">No more games to report on this field. Thank you!</p>';
   }
   if (finished.length) {
-    html += `<section class="slot"><div class="slot-head"><h2>Recently reported</h2></div>${finished.map((g) => card(g, true)).join('')}
-      <p class="note">Entered the wrong score? Tap <strong>Edit score</strong> and send the right one. It replaces the old score right away. Need more help? Call Stretch at 614-522-9419.</p></section>`;
+    html += `<section class="slot"><div class="slot-head"><h2>Recently reported <span class="sub">(last hour)</span></h2></div>${finished.map((g) => card(g, true)).join('')}
+      <p class="note">Shows the last 3 games reported on this field. Entered the wrong score? Tap <strong>Edit score</strong> and send the right one. It replaces the old score right away. Need more help? Call Stretch at 614-522-9419.</p></section>`;
   }
   $('#app').innerHTML = html;
 }
