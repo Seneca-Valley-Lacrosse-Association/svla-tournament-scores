@@ -2,7 +2,7 @@ import { esc, store, applyEdits, fetchSchedule, fetchState, gameCard, timeAgo, s
 
 const $ = (s) => document.querySelector(s);
 const PASS_KEY = 'pc26-pass';
-const ui = { view: 'scores', div: 'All', field: Number(store.get('pc26-sfield') || 0), hideFinal: false, teamsOpen: false };
+const ui = { view: 'scores', div: 'All', field: Number(store.get('pc26-sfield') || 0), hideFinal: false, teamsOpen: false, linksOpen: false };
 let base;
 let sched;
 let state = { scores: {}, edits: {}, updatedAt: null };
@@ -173,10 +173,11 @@ function renderReports() {
   const linkRow = (label, f, color) => `<div class="link-row" style="--fc:${color}">
       <div class="link-info"><strong>${esc(label)}</strong><span class="link-url">${esc(linkFor(f).replace(/^https?:\/\//, ''))}</span></div>
       <button class="btn small" type="button" data-copylink="${linkFor(f)}" data-copylabel="${esc(label)}">Copy link</button></div>`;
-  let html = `<section class="card link-card"><h2>Scoring table links</h2>
+  let html = `<details class="card link-card" id="links-card"${ui.linksOpen ? ' open' : ''}>
+    <summary>Scoring table links</summary>
     <p class="note">Need a score fixed or reported? Tap <strong>Copy link</strong>, then paste it into a text message. The link opens that field's score reporting page. No sign-in needed.</p>
     ${Object.keys(sched.fields).map((n) => linkRow(`Field ${n}`, n, FIELD_COLORS[n])).join('')}
-    ${linkRow('Any field (picker)', 0, 'var(--line)')}</section>`;
+    ${linkRow('Any field (picker)', 0, 'var(--line)')}</details>`;
   html += `<p class="note">Clean scores from the scoring tables post automatically. Anything unusual waits here for you. Held reports are <strong>not</strong> shown to parents until approved. When a game has more than one report, the newest is listed first.</p>`;
   html += `<div class="legend rep-legend">${Object.entries(sched.fields).map(([n, nm]) => `<div style="--fc:${FIELD_COLORS[n]}"><i></i><span><strong>Field ${n}</strong></span></div>`).join('')}</div>`;
   if (reportsErr) html += `<p class="err">${esc(reportsErr)}</p>`;
@@ -411,7 +412,7 @@ function openReportEdit(id) {
   ed.showModal();
 }
 
-document.addEventListener('toggle', (e) => { if (e.target.id === 'teams-card') ui.teamsOpen = e.target.open; }, true);
+document.addEventListener('toggle', (e) => { if (e.target.id === 'teams-card') ui.teamsOpen = e.target.open; if (e.target.id === 'links-card') ui.linksOpen = e.target.open; }, true);
 
 /* ---------- score editor ---------- */
 const ed = $('#editor');
