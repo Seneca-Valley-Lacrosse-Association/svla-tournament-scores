@@ -50,7 +50,7 @@ function card(g, reported) {
     </div>
     <div class="meta">
       <span class="pill ${done ? 'final' : 'up'}">${done ? 'Final' : esc(sched.slots[g.slot])}</span>
-      <span class="sub">${g.div}</span>
+      <span class="sub">${done ? `${esc(sched.slots[g.slot])} \u00b7 ` : ''}${g.div}</span>
       ${note}
       ${reported ? `<button class="btn alt edit-btn" data-fix="${g.id}">Edit score</button>` : done ? '' : `<button class="btn edit-btn" data-report="${g.id}">Report final score</button>`}
     </div>
