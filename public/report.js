@@ -1,7 +1,7 @@
 // Table score report page: opened from the QR code taped to each scoring table (/report?field=3).
 // No login. The worker taps a game, enters the final score, confirms, and sends.
 
-import { esc, store, applyEdits, fetchSchedule, fetchState, FIELD_COLORS } from './shared.js';
+import { esc, store, applyEdits, fetchSchedule, fetchState, FIELD_COLORS, EVENT_DATE } from './shared.js';
 
 const $ = (s) => document.querySelector(s);
 const SENT_KEY = 'pc26-reported';
@@ -26,6 +26,30 @@ const saveSent = () => store.set(SENT_KEY, JSON.stringify(sent));
 const recent = (m) => m && Date.now() - (m.at || 0) < (m.outcome === 'held' ? SHOW_FINISHED_MS : 2 * 60 * 1000);
 const newId = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : `r${Date.now()}${Math.random().toString(16).slice(2)}`);
 
+// A game is overdue once its 50-minute slot has ended and it still has no score. Only on event day.
+// (?asof=14:00 pretends it is 2:00 PM, for trying this page out before the event.)
+const SLOT_MINUTES = 50;
+const clockMinutes = (label) => {
+  const m = /^(\d+):(\d+)\s*(AM|PM)$/i.exec(label || '');
+  return m ? (Number(m[1]) % 12) * 60 + Number(m[2]) + (m[3].toUpperCase() === 'PM' ? 720 : 0) : null;
+};
+function minutesNow() {
+  const asof = /^(\d{1,2}):(\d{2})$/.exec(params.get('asof') || '');
+  if (asof) return Number(asof[1]) * 60 + Number(asof[2]);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const get = (t) => parts.find((p) => p.type === t).value;
+  if (`${get('year')}-${get('month')}-${get('day')}` !== EVENT_DATE) return null;
+  return Number(get('hour')) * 60 + Number(get('minute'));
+}
+const isOverdue = (g) => {
+  const now = minutesNow();
+  const start = clockMinutes(sched.slots[g.slot]);
+  return now !== null && start !== null && start + SLOT_MINUTES <= now;
+};
+
 function fieldPicker() {
   $('#field-title').textContent = 'Report a score';
   $('#app').innerHTML = `<section class="card"><h2>Which field?</h2>
@@ -33,7 +57,7 @@ function fieldPicker() {
     <div class="field-grid">${[1, 2, 3, 4].map((f) => `<a class="btn field-btn" style="--fc:${FIELD_COLORS[f]}" href="/report?field=${f}">Field ${f}</a>`).join('')}</div></section>`;
 }
 
-function card(g, reported) {
+function card(g, reported, late = false) {
   const A = esc(sched.teams[g.a]);
   const B = esc(sched.teams[g.b]);
   const s = state.scores[g.id];
@@ -43,14 +67,14 @@ function card(g, reported) {
   const note = mine?.outcome === 'held'
     ? '<span class="sub note">Received. A staff member will confirm it.</span>'
     : done ? '<span class="sub">Final score sent</span>' : '';
-  return `<article class="game${done ? ' sent' : ''}" style="--fc:${FIELD_COLORS[g.field]}">
+  return `<article class="game${done ? ' sent' : ''}${late ? ' late' : ''}" style="--fc:${FIELD_COLORS[g.field]}">
     <div>
       <div class="team"><span class="tname">${A}</span><span class="pts">${done ? shown.a : '–'}</span></div>
       <div class="team"><span class="tname">${B}</span><span class="pts">${done ? shown.b : '–'}</span></div>
     </div>
     <div class="meta">
-      <span class="pill ${done ? 'final' : 'up'}">${done ? 'Final' : esc(sched.slots[g.slot])}</span>
-      <span class="sub">${done ? `${esc(sched.slots[g.slot])} \u00b7 ` : ''}${g.div}</span>
+      <span class="pill ${done ? 'final' : late ? 'late' : 'up'}">${done ? 'Final' : late ? 'Score needed' : esc(sched.slots[g.slot])}</span>
+      <span class="sub">${done || late ? `${esc(sched.slots[g.slot])} \u00b7 ` : ''}${g.div}</span>
       ${note}
       ${reported ? `<button class="btn alt edit-btn" data-fix="${g.id}">Edit score</button>` : done ? '' : `<button class="btn edit-btn" data-report="${g.id}">Report final score</button>`}
     </div>
@@ -62,7 +86,9 @@ function render() {
   $('#field-title').textContent = `Field ${field}`;
   const games = sched.games.filter((g) => g.field === field && !g.cancelled).sort((x, y) => x.slot - y.slot);
   const isDone = (g) => recent(sent[g.id]) || state.scores[g.id]?.status === 'final';
-  const todo = games.filter((g) => !isDone(g)).slice(0, 3);
+  const pending = games.filter((g) => !isDone(g));
+  const overdue = pending.filter(isOverdue); // slot is over and no score yet, always shown first
+  const todo = pending.filter((g) => !isOverdue(g)).slice(0, 3);
   // Finished games stay listed for an hour after their score was posted, newest first, then drop off.
   const postedAt = (g) => {
     const mine = recent(sent[g.id]) ? sent[g.id].at : 0;
@@ -74,9 +100,14 @@ function render() {
     .sort((x, y) => postedAt(y) - postedAt(x))
     .slice(0, 3);
   let html = '';
+  if (overdue.length) {
+    html += `<section class="slot"><div class="slot-head"><h2 class="late-h">Score needed</h2></div>
+      <p class="note">These games should be over. Please report the final score. If the game was not played, call Stretch at 614-522-9419.</p>
+      ${overdue.map((g) => card(g, false, true)).join('')}</section>`;
+  }
   if (todo.length) {
     html += `<section class="slot"><div class="slot-head"><h2>Next games</h2></div>${todo.map((g) => card(g, false)).join('')}</section>`;
-  } else {
+  } else if (!overdue.length) {
     html += '<p class="empty">No more games to report on this field. Thank you!</p>';
   }
   if (finished.length) {

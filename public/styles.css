@@ -214,3 +214,7 @@ dialog { max-height: 92vh; overflow-y: auto; }
 .rep-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .badge { display: inline-block; min-width: 22px; padding: 1px 7px; margin-left: 6px; border-radius: 999px; background: var(--pumpkin-deep); color: #fff; font-size: 13px; font-weight: 800; line-height: 20px; }
 .rep-h { font-size: 20px; color: var(--navy); margin: 22px 0 8px; }
+
+.pill.late { background: #fde8e8; color: #a12626; }
+.game.late { box-shadow: 0 0 0 2px #e8a3a3, var(--shadow); }
+.late-h { color: #a12626; }
