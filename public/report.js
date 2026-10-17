@@ -30,6 +30,13 @@ const bridged = (g) => { const m = sent[g.id]; return !!m && m.outcome !== 'held
 const waiting = (g) => { const m = sent[g.id]; return !!m && m.outcome === 'held' && Date.now() - (m.at || 0) < 30 * 60 * 1000 && state.scores[g.id]?.status !== 'final'; };
 const newId = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : `r${Date.now()}${Math.random().toString(16).slice(2)}`);
 
+// A score can be fixed from a table for 20 minutes after it first went up, then it locks.
+// The server enforces this (LOCK_MINUTES in lib/report-rules.js); the page just stops offering "Edit score".
+const LOCK_MS = 20 * 60 * 1000;
+const PHONE = '6145229419';
+const locked = (g) => { const t = Date.parse(state.scores[g.id]?.firstAt || ''); return Number.isFinite(t) && Date.now() - t > LOCK_MS; };
+const lockedHtml = () => `<strong>This score is locked.</strong> If you see a mistake, please <a href="tel:${PHONE}">call</a> or <a href="sms:${PHONE}">text</a> Stretch at 614-522-9419.`;
+
 // A game is overdue once its 50-minute slot has ended and it still has no score. Only on event day.
 // (?asof=14:00 pretends it is 2:00 PM, for trying this page out before the event.)
 const SLOT_MINUTES = 50;
@@ -80,7 +87,8 @@ function card(g, reported, late = false) {
       <span class="pill ${done ? 'final' : late ? 'late' : 'up'}">${done ? 'Final' : late ? 'Score needed' : esc(sched.slots[g.slot])}</span>
       <span class="sub">${done || late ? `${esc(sched.slots[g.slot])} \u00b7 ` : ''}${g.div}</span>
       ${note}
-      ${reported || held ? `<button class="btn alt edit-btn" data-fix="${g.id}">Edit score</button>` : done ? '' : `<button class="btn edit-btn" data-report="${g.id}">Report final score</button>`}
+      ${reported && done && locked(g) ? `<span class="sub note">${lockedHtml()}</span>`
+        : reported || held ? `<button class="btn alt edit-btn" data-fix="${g.id}">Edit score</button>` : done ? '' : `<button class="btn edit-btn" data-report="${g.id}">Report final score</button>`}
     </div>
   </article>`;
 }
@@ -116,7 +124,7 @@ function render() {
   }
   if (finished.length) {
     html += `<section class="slot"><div class="slot-head"><h2>Recently reported <span class="sub">(last hour)</span></h2></div>${finished.map((g) => card(g, true)).join('')}
-      <p class="note">Shows the last 3 games reported on this field. Entered the wrong score? Tap <strong>Edit score</strong> and send the right one. It replaces the old score right away. Need more help? Call Stretch at 614-522-9419.</p></section>`;
+      <p class="note">Shows the last 3 games reported on this field. Entered the wrong score? Tap <strong>Edit score</strong> and send the right one. It replaces the old score right away. You can fix a score for 20 minutes after it is sent; after that it is locked, so please <a href="tel:${PHONE}">call</a> or <a href="sms:${PHONE}">text</a> Stretch at 614-522-9419.</p></section>`;
   }
   $('#app').innerHTML = html;
 }
@@ -150,6 +158,7 @@ function openReport(id, fix = false) {
   current = sched.games.find((g) => g.id === id);
   fixing = fix;
   clientId = newId();
+  $('#r-next').disabled = false; // a previous "locked" answer may have left Send switched off
   $('#r-title').textContent = `${sched.teams[current.a]} vs ${sched.teams[current.b]}`;
   $('#r-sub').textContent = `${current.div} · ${sched.slots[current.slot]} · Field ${current.field}`;
   $('#r-a').textContent = sched.teams[current.a];
@@ -191,6 +200,7 @@ $('#r-form').addEventListener('submit', async (e) => {
   btn.disabled = true;
   btn.textContent = 'Sending…';
   $('#r-err').textContent = '';
+  let lockedNow = false;
   try {
     const r = await fetch('/api/report', {
       method: 'POST',
@@ -206,7 +216,12 @@ $('#r-form').addEventListener('submit', async (e) => {
     render();
     toast(data.outcome === 'held' ? 'Received. Staff will confirm it.' : fixing ? 'Score updated. Thank you!' : 'Sent. Thank you!');
   } catch (err) {
-    if (err.code === 'limit') {
+    if (err.code === 'locked') {
+      // Trying again will not help. Keep Send switched off and show how to reach Stretch.
+      lockedNow = true;
+      $('#r-err').innerHTML = lockedHtml();
+      load(); // refresh the list so this game stops offering "Edit score"
+    } else if (err.code === 'limit') {
       // Trying again will not help; point them to the phone number instead.
       $('#r-err').innerHTML = `${esc(err.message).replace('the number on the sheet', '<a href="tel:6145229419">614-522-9419</a>')}`;
     } else if (err.code === 'tie') {
@@ -217,7 +232,7 @@ $('#r-form').addEventListener('submit', async (e) => {
     }
   } finally {
     busy = false;
-    btn.disabled = false;
+    btn.disabled = lockedNow;
     btn.textContent = step === 'enter' ? 'Next' : 'Send final score';
   }
 });

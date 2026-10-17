@@ -2,7 +2,8 @@
 //   rm -rf .data
 //   STORE=file REPORTS_STORE=file ORGANIZER_PASSCODE=test PORT=3000 node scripts/dev-server.mjs &
 //   node scripts/test-reports.mjs
-import { assess, slotIndexNow } from '../lib/report-rules.js';
+import { promises as fs } from 'node:fs';
+import { assess, slotIndexNow, isScoreLocked, firstPostedAt, LOCK_MINUTES } from '../lib/report-rules.js';
 import { SLOTS, GAMES } from '../lib/schedule.js';
 
 const base = process.env.BASE || 'http://localhost:3000';
@@ -168,6 +169,42 @@ ok(r.status === 200 && (await state()).scores[ad2].a === 8, 'admin edit works on
 ok((await list()).filter((x) => x.game_id === ad2 && x.status === 'held').length === 0, 'the held report is settled by the admin edit');
 r = await staff({ action: 'undo', id: (await list()).find((x) => x.game_id === ad2 && /Edited by admin/.test(x.review_note || '')).id });
 ok(r.status === 200 && !(await state()).scores[ad2], 'an admin edit can be undone');
+
+// 14. A score locks 20 minutes after it first went up. Table workers are refused; staff can still change it.
+// (File store only: this test moves the saved report times back so it does not have to wait 20 minutes.)
+const REPORTS_FILE = process.env.REPORTS_FILE || '.data/reports.json';
+const backdate = async (gameId, minutes) => {
+  const data = JSON.parse(await fs.readFile(REPORTS_FILE, 'utf8'));
+  for (const x of data.reports) if (x.game_id === gameId) x.created_at = new Date(Date.now() - minutes * 60000).toISOString();
+  await fs.writeFile(REPORTS_FILE, JSON.stringify(data));
+};
+const lockUsed = new Set([...usedIds, fx1, fx2, fx3, cl1, ad1, ad2]);
+const [lk1, lk2] = GAMES.filter((g) => g.field === 3 && !lockUsed.has(g.id));
+r = await report(lk1.id, 3, 5, 3);
+ok(r.data.outcome === 'published', 'lock test: first report posts');
+const firstAt = (await state()).scores[lk1.id]?.firstAt;
+ok(!!firstAt, 'the board records when the score first went up');
+r = await correct(lk1.id, 3, 3, 5);
+ok(r.data.outcome === 'published' && (await state()).scores[lk1.id].firstAt === firstAt, 'a correction inside 20 minutes works and does not restart the clock');
+await backdate(lk1.id, LOCK_MINUTES + 10);
+r = await correct(lk1.id, 3, 6, 2);
+ok(r.status === 423 && r.data.code === 'locked', 'a correction after 20 minutes is refused with a locked code');
+ok(/locked/i.test(r.data.error || '') && /614-522-9419/.test(r.data.error || '') && /Stretch/.test(r.data.error || ''), 'the locked message tells them to call or text Stretch');
+ok((await state()).scores[lk1.id].a === 3, 'a refused correction does not change the board');
+r = await report(lk1.id, 3, 9, 1);
+ok(r.status === 423 && r.data.code === 'locked', 'a brand new report for a locked game is refused too');
+r = await correct(lk1.id, 3, 3, 5);
+ok(r.data.outcome === 'duplicate', 'resending the score that is already on the board stays harmless');
+ok((await list()).some((x) => x.game_id === lk1.id) && !(await list()).some((x) => x.game_id === lk1.id && x.score_a === 6), 'a refused report is not stored');
+r = await edit(lk1.id, 8, 2);
+ok(r.status === 200 && (await state()).scores[lk1.id].a === 8, 'staff can still edit a locked score from the Reports tab');
+r = await post('/api/score', { gameId: lk1.id, status: 'final', a: 9, b: 2 }, { 'x-passcode': 'test' });
+ok(r.status === 200 && (await state()).scores[lk1.id].a === 9, 'staff can still change a locked score from the Scores tab');
+r = await report(lk2.id, 3, 4, 1);
+ok(r.data.outcome === 'published', 'other games are not affected by the lock');
+ok(!isScoreLocked([]) && !isScoreLocked([{ status: 'held', created_at: '2000-01-01T00:00:00Z' }]), 'nothing is locked until a score has been posted');
+ok(firstPostedAt([{ status: 'undone', created_at: '2000-01-01T00:00:00Z' }]) === null, 'an undone report does not start the clock');
+ok(isScoreLocked([{ status: 'published', created_at: new Date(Date.now() - 21 * 60000).toISOString() }]) && !isScoreLocked([{ status: 'published', created_at: new Date(Date.now() - 19 * 60000).toISOString() }]), 'the lock starts after 20 minutes, not before');
 
 // 9b. Reset everything.
 r = await staff({ action: 'reset' });

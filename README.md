@@ -109,6 +109,7 @@ Each scoring table has a QR code (one per field, not per game) that opens `/repo
 - Staff can **Approve**, **Edit score** then approve, or **Reject** held reports, and **Undo** any posted one (Undo refuses if a scorekeeper changed that score afterwards).
 - Reports and an audit log live in a separate **Supabase** project (`svla-scores`), locked down with row level security so only this server can touch them. The live scoreboard itself still uses Blob. If Supabase is unavailable, scorekeepers can still enter scores in the Scores tab.
 - Retries are safe (each attempt carries a client id), and reports are rate limited per game and per phone.
+- **Score lock:** a table worker can fix a score for **20 minutes** after it first went up (corrections do not restart the clock). After that the server refuses new reports and corrections with a "locked" answer, and the page shows *"This score is locked. If you see a mistake, please call or text Stretch"* with tap-to-call and tap-to-text links; "Edit score" is hidden. Staff are not affected: they can still change any score from the Scores and Reports tabs. `supabase/report-lock.sql` adds the same rule as a database trigger, as a backup. Change `LOCK_MINUTES` in `lib/report-rules.js` (and `LOCK_MS` in `public/report.js` and the interval in the SQL file) to adjust it.
 - Env vars (server only): `SUPABASE_URL` and `SUPABASE_SECRET_KEY`.
 - Local test: start the dev server with `STORE=file REPORTS_STORE=file ORGANIZER_PASSCODE=test`, then run `node scripts/test-reports.mjs`.
 
