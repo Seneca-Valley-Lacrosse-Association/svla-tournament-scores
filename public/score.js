@@ -168,7 +168,16 @@ function renderReports() {
   const closed = groups.filter(([, l]) => !l.some((r) => ['held', 'published', 'approved'].includes(r.status)));
   const heldCount = reports.filter((r) => r.status === 'held').length;
 
-  let html = `<p class="note">Clean scores from the scoring tables post automatically. Anything unusual waits here for you. Held reports are <strong>not</strong> shown to parents until approved. When a game has more than one report, the newest is listed first.</p>`;
+  // Cheat sheet: one tap copies a scoring table's report link, ready to paste into a text message.
+  const linkFor = (f) => `${location.origin}/report${f ? `?field=${f}` : ''}`;
+  const linkRow = (label, f, color) => `<div class="link-row" style="--fc:${color}">
+      <div class="link-info"><strong>${esc(label)}</strong><span class="link-url">${esc(linkFor(f).replace(/^https?:\/\//, ''))}</span></div>
+      <button class="btn small" type="button" data-copylink="${linkFor(f)}" data-copylabel="${esc(label)}">Copy link</button></div>`;
+  let html = `<section class="card link-card"><h2>Scoring table links</h2>
+    <p class="note">Need a score fixed or reported? Tap <strong>Copy link</strong>, then paste it into a text message. The link opens that field's score reporting page. No sign-in needed.</p>
+    ${Object.keys(sched.fields).map((n) => linkRow(`Field ${n}`, n, FIELD_COLORS[n])).join('')}
+    ${linkRow('Any field (picker)', 0, 'var(--line)')}</section>`;
+  html += `<p class="note">Clean scores from the scoring tables post automatically. Anything unusual waits here for you. Held reports are <strong>not</strong> shown to parents until approved. When a game has more than one report, the newest is listed first.</p>`;
   html += `<div class="legend rep-legend">${Object.entries(sched.fields).map(([n, nm]) => `<div style="--fc:${FIELD_COLORS[n]}"><i></i><span><strong>Field ${n}</strong></span></div>`).join('')}</div>`;
   if (reportsErr) html += `<p class="err">${esc(reportsErr)}</p>`;
   html += `<h2 class="rep-h">Needs review (${heldCount})</h2>${needs.length ? needs.map(([id, l]) => gameCardHtml(id, l)).join('') : '<p class="empty">Nothing waiting. 🎃</p>'}`;
@@ -259,6 +268,28 @@ function render() {
   $('#app').innerHTML = html;
 }
 
+// Copy a link to the clipboard. Falls back to a hidden textarea for browsers that block the Clipboard API.
+async function copyLink(url, label) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(url);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+      document.body.append(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      if (!ok) throw new Error('copy failed');
+    }
+    toast(`${label} link copied`);
+  } catch {
+    window.prompt('Copy this link:', url);
+  }
+}
+
 // Two-tap confirmation for destructive buttons (no browser pop-ups).
 let armed = { key: null, t: 0 };
 function confirmTap(btn, key, armedText) {
@@ -290,6 +321,8 @@ document.addEventListener('click', async (e) => {
   const resetScores = e.target.closest('[data-resetscores]');
   const redit = e.target.closest('[data-rpedit]');
   const rgame = e.target.closest('[data-rgame]');
+  const copyBtn = e.target.closest('[data-copylink]');
+  if (copyBtn) return copyLink(copyBtn.dataset.copylink, copyBtn.dataset.copylabel);
   if (resetScores) return resetEverything();
   if (rapprove) return reportAction('approve', rapprove.dataset.rapprove);
   if (rreject) return reportAction('reject', rreject.dataset.rpreject, rreject, 'Tap again to reject');

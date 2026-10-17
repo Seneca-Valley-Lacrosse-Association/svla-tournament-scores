@@ -221,4 +221,12 @@ dialog { max-height: 92vh; overflow-y: auto; }
 
 .rep-edit { margin-left: auto; }
 
+/* Scoring table link cheat sheet (Reports tab) */
+.link-card { margin-top: 12px; }
+.link-card h2 { margin-bottom: 0; }
+.link-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0 10px 10px; border-bottom: 1px solid var(--line); border-left: 8px solid var(--fc, var(--line)); margin-top: 8px; }
+.link-row:last-child { border-bottom: 0; }
+.link-info { display: flex; flex-direction: column; min-width: 0; }
+.link-url { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+
 .danger-zone { margin: 28px 0 8px; padding-top: 12px; border-top: 1px dashed #c33; }
