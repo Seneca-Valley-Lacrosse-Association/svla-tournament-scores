@@ -361,9 +361,9 @@ $('#ed-form').addEventListener('submit', async (e) => {
   $('#ed-err').textContent = '';
   try {
     if (reportEditing) {
-      const rid = reportEditing.id;
+      // Keep reportEditing until the save succeeds, so a retry after an error still approves this report.
+      await api('/api/reports', { action: 'approve', id: reportEditing.id, a: num($('#ed-ain')), b: num($('#ed-bin')) });
       reportEditing = null;
-      await api('/api/reports', { action: 'approve', id: rid, a: num($('#ed-ain')), b: num($('#ed-bin')) });
       setState(await fetchState(true));
       await refreshReports();
       ed.close();
