@@ -171,7 +171,10 @@ $('#r-form').addEventListener('submit', async (e) => {
     render();
     toast(data.outcome === 'held' ? 'Received. Staff will confirm it.' : fixing ? 'Score updated. Thank you!' : 'Sent. Thank you!');
   } catch (err) {
-    if (err.code === 'tie') {
+    if (err.code === 'limit') {
+      // Trying again will not help; point them to the phone number instead.
+      $('#r-err').innerHTML = `${esc(err.message).replace('the number on the sheet', '<a href="tel:6145229419">614-522-9419</a>')}`;
+    } else if (err.code === 'tie') {
       setStep('enter');
       $('#r-err').innerHTML = `${esc(err.message).replace('614-522-9419', '<a href="tel:6145229419">614-522-9419</a>')}`;
     } else {

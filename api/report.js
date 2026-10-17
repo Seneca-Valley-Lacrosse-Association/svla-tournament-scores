@@ -14,7 +14,7 @@ import {
 import { assess, toScore, MAX_REPORTS_PER_GAME, MAX_REPORTS_PER_IP_10MIN } from '../lib/report-rules.js';
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
-const CALL = 'Please call the number on the sheet, or write the score on the paper log.';
+const CALL = 'Please call or text Stretch at the number on the sheet, or write the score on the paper log.';
 const clientIp = (req) => (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
 const hashIp = (ip) => createHash('sha256').update(`svla-report:${ip}`).digest('hex').slice(0, 16);
 
@@ -48,7 +48,7 @@ export async function POST(request) {
 
     const ipHash = hashIp(clientIp(request));
     if (await countRecentByIp(ipHash, new Date(Date.now() - 10 * 60 * 1000).toISOString()) >= MAX_REPORTS_PER_IP_10MIN) {
-      return json({ error: `Too many reports from this phone. ${CALL}` }, 429, NO_STORE);
+      return json({ error: `Too many reports from this phone. ${CALL}`, code: 'limit' }, 429, NO_STORE);
     }
 
     const state = await readState();
@@ -58,7 +58,7 @@ export async function POST(request) {
 
     const all = await reportsForGame(gameId);
     const prior = all.filter((r) => r.status === 'published' || r.status === 'approved' || r.status === 'held');
-    if (all.length >= MAX_REPORTS_PER_GAME) return json({ error: `This game already has several reports. ${CALL}` }, 429, NO_STORE);
+    if (all.length >= MAX_REPORTS_PER_GAME) return json({ error: `This game already has several reports. ${CALL}`, code: 'limit' }, 429, NO_STORE);
 
     // Same score already on the board or already reported: nothing to do.
     const existing = state.scores[gameId];
