@@ -243,3 +243,6 @@ dialog { max-height: 92vh; overflow-y: auto; }
 .learn-more-notice { margin-top: 12px; padding: 14px 16px; border-left: 6px solid #3579b1; border-radius: var(--radius, 12px); background: #eef6fc; color: #0e2a44; font-size: 17px; line-height: 1.55; box-shadow: var(--shadow, 0 4px 14px rgba(0,0,0,.08)); }
 .learn-more-notice strong { display: block; font-size: 19px; color: #17558a; margin-bottom: 2px; }
 .learn-more-notice a { color: #17558a; font-weight: 800; }
+.learn-more-notice p { margin: 0 0 16px; }
+.learn-more-notice p:last-child { margin-bottom: 0; }
+.learn-more-notice p + p { padding-top: 14px; border-top: 1px solid #cfe3f3; }
