@@ -233,3 +233,8 @@ dialog { max-height: 92vh; overflow-y: auto; }
 .vstats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center; }
 .vstats strong { display: block; font-size: 30px; line-height: 1.1; color: var(--navy); }
 .vstats span { font-size: 13px; color: var(--muted, #555); }
+
+/* Missing-score notice (front page) */
+.missing-score-notice { margin-top: 16px; padding: 14px 16px; border-left: 6px solid #f97316; border-radius: var(--radius, 12px); background: #fff7ed; color: #7c2d12; font-size: 17px; line-height: 1.55; box-shadow: var(--shadow, 0 4px 14px rgba(0,0,0,.08)); }
+.missing-score-notice strong { display: block; font-size: 19px; color: #9a3412; margin-bottom: 2px; }
+.missing-score-notice a { color: #9a3412; font-weight: 800; }
