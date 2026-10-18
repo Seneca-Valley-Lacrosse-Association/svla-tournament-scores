@@ -238,3 +238,8 @@ dialog { max-height: 92vh; overflow-y: auto; }
 .missing-score-notice { margin-top: 16px; padding: 14px 16px; border-left: 6px solid #f97316; border-radius: var(--radius, 12px); background: #fff7ed; color: #7c2d12; font-size: 17px; line-height: 1.55; box-shadow: var(--shadow, 0 4px 14px rgba(0,0,0,.08)); }
 .missing-score-notice strong { display: block; font-size: 19px; color: #9a3412; margin-bottom: 2px; }
 .missing-score-notice a { color: #9a3412; font-weight: 800; }
+
+/* Learn-more notice (front page) */
+.learn-more-notice { margin-top: 12px; padding: 14px 16px; border-left: 6px solid #3579b1; border-radius: var(--radius, 12px); background: #eef6fc; color: #0e2a44; font-size: 17px; line-height: 1.55; box-shadow: var(--shadow, 0 4px 14px rgba(0,0,0,.08)); }
+.learn-more-notice strong { display: block; font-size: 19px; color: #17558a; margin-bottom: 2px; }
+.learn-more-notice a { color: #17558a; font-weight: 800; }
