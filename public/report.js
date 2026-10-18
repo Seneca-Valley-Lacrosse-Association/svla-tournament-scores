@@ -1,7 +1,7 @@
 // Table score report page: opened from the QR code taped to each scoring table (/report?field=3).
 // No login. The worker taps a game, enters the final score, confirms, and sends.
 
-import { esc, store, applyEdits, fetchSchedule, fetchState, FIELD_COLORS, EVENT_DATE } from './shared.js';
+import { esc, store, applyEdits, fetchSchedule, fetchState, trackVisit, FIELD_COLORS, EVENT_DATE } from './shared.js';
 
 const $ = (s) => document.querySelector(s);
 const SENT_KEY = 'pc26-reported';
@@ -254,6 +254,7 @@ document.addEventListener('click', (e) => {
 });
 
 /* ---------- start ---------- */
+trackVisit('report');
 if (![1, 2, 3, 4].includes(field)) fieldPicker();
 else {
   load();

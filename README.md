@@ -229,3 +229,5 @@ Then run `node scripts/validate-schedule.mjs`, deploy, and rehearse once with yo
 Released under the **GNU General Public License v3.0**. See [LICENSE](LICENSE).
 
 Built by the SVLA tech volunteers. Contributions and ideas from other clubs are welcome.
+
+- **Visitor count:** the Reports tab shows how many different phones or browsers opened the parent page and the table report pages (all time, today, last hour). Each device makes up its own random id the first time (nothing personal, no IP address), so reloading does not count again. Staff pages and obvious bots are not counted, and one person on two devices counts twice. Counts live in the `visitors` table in Supabase (`supabase/visitors.sql`, run once) and are not cleared by the score reset. To start fresh for a new event, run `truncate table public.visitors;`.

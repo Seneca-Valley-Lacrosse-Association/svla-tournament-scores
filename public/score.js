@@ -11,6 +11,7 @@ let editing = null;
 let poll;
 let reports = [];
 let reportsErr = '';
+let visitors = null; // anonymous visitor counts, or null while unavailable
 
 const ss = {
   get() { try { return sessionStorage.getItem(PASS_KEY) || ''; } catch { return ''; } },
@@ -96,6 +97,7 @@ async function refreshReports() {
     if (err.status === 401) return;
     reportsErr = err.message;
   }
+  try { visitors = (await api('/api/reports', { action: 'visitors' })).stats || null; } catch (err) { if (err.status === 401) return; visitors = null; }
   const held = reports.filter((r) => r.status === 'held').length;
   const badge = $('#rep-badge');
   badge.textContent = held;
@@ -178,6 +180,15 @@ function renderReports() {
     <p class="note">Need a score fixed or reported? Tap <strong>Copy link</strong>, then paste it into a text message. The link opens that field's score reporting page. No sign-in needed.</p>
     ${Object.keys(sched.fields).map((n) => linkRow(`Field ${n}`, n, FIELD_COLORS[n])).join('')}
     ${linkRow('Any field (picker)', 0, 'var(--line)')}</details>`;
+  const nf = (n) => Number(n || 0).toLocaleString();
+  html += `<section class="card visitors-card"><h2>Visitors</h2>${visitors
+    ? `<div class="vstats">
+        <div><strong>${nf(visitors.unique_total)}</strong><span>unique visitors, all time</span></div>
+        <div><strong>${nf(visitors.unique_today)}</strong><span>today</span></div>
+        <div><strong>${nf(visitors.unique_hour)}</strong><span>in the last hour</span></div>
+      </div>
+      <p class="note">Each phone or browser counts once, however many times it opens the page. ${nf(visitors.new_today)} of today's visitors are new. Parent page: ${nf(visitors.by_page?.scores)} · Table report pages: ${nf(visitors.by_page?.report)} · Total opens: ${nf(visitors.visits_total)}. A person on two devices counts twice. Staff pages are not counted. This count is not cleared by "Reset all scores and reports".</p>`
+    : '<p class="note">The visitor count is unavailable right now. Run supabase/visitors.sql once in Supabase if you have not yet.</p>'}</section>`;
   html += `<p class="note">Clean scores from the scoring tables post automatically. Anything unusual waits here for you. Held reports are <strong>not</strong> shown to parents until approved. When a game has more than one report, the newest is listed first.</p>`;
   html += `<div class="legend rep-legend">${Object.entries(sched.fields).map(([n, nm]) => `<div style="--fc:${FIELD_COLORS[n]}"><i></i><span><strong>Field ${n}</strong></span></div>`).join('')}</div>`;
   if (reportsErr) html += `<p class="err">${esc(reportsErr)}</p>`;

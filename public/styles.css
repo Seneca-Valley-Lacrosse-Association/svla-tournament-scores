@@ -229,3 +229,7 @@ dialog { max-height: 92vh; overflow-y: auto; }
 .link-url { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 
 .danger-zone { margin: 28px 0 8px; padding-top: 12px; border-top: 1px dashed #c33; }
+
+.vstats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center; }
+.vstats strong { display: block; font-size: 30px; line-height: 1.1; color: var(--navy); }
+.vstats span { font-size: 13px; color: var(--muted, #555); }

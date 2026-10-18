@@ -1,4 +1,4 @@
-import { esc, store, applyEdits, fetchSchedule, fetchState, slotClock, standings, gameCard, timeAgo, reportHeight, FIELD_COLORS } from './shared.js';
+import { esc, store, applyEdits, fetchSchedule, fetchState, trackVisit, slotClock, standings, gameCard, timeAgo, reportHeight, FIELD_COLORS } from './shared.js';
 
 const $ = (s) => document.querySelector(s);
 const ui = {
@@ -106,6 +106,7 @@ async function refresh() {
     $('#app').innerHTML = '<p class="empty err">The schedule could not be loaded. Please check your connection and reload.</p>';
     return;
   }
+  trackVisit('scores');
   await refresh();
   render();
   reportHeight();
