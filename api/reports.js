@@ -4,7 +4,7 @@
 import { checkPasscode } from '../lib/auth.js';
 import { json } from '../lib/http.js';
 import { publishScore, unpublishScore, ScoreChanged } from '../lib/publish.js';
-import { getReport, updateReport, listReports, insertReport, supersedeOthers, audit, clearAllReports, ReportsUnavailable } from '../lib/reports-db.js';
+import { getReport, updateReport, listReports, insertReport, supersedeOthers, audit, clearAllReports, visitorStats, ReportsUnavailable } from '../lib/reports-db.js';
 import { SLOTS, FIELDS, TEAMS, GAMES, TABLE } from '../lib/schedule.js';
 import { applyEdits } from '../lib/apply.js';
 import { readState, mutate } from '../lib/store.js';
@@ -23,6 +23,8 @@ export async function POST(request) {
 
   try {
     if (action === 'list') return json({ ok: true, reports: await listReports(48) }, 200, NO_STORE);
+    // Anonymous visitor counts for the Reports tab. Not part of the game-day reset.
+    if (action === 'visitors') return json({ ok: true, stats: await visitorStats() }, 200, NO_STORE);
     // Sets every score back to zero (not started) and deletes all report history. The schedule and team edits are kept.
     if (action === 'reset') {
       if (body.confirm !== 'RESET') return json({ error: 'Reset was not confirmed.' }, 400, NO_STORE);

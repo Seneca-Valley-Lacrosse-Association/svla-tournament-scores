@@ -155,3 +155,26 @@ export function reportHeight() {
   new ResizeObserver(send).observe(document.body);
   send();
 }
+
+// Counts this phone once as a visitor of `page` ('scores' or 'report'). The id is random and made up here;
+// nothing personal is sent. Sent at most once every 30 minutes per page so reloading does not inflate hits.
+// Never throws: counting must not get in the way of the page.
+export function trackVisit(page) {
+  try {
+    let id = store.get('svla-vid');
+    if (!id) {
+      id = globalThis.crypto?.randomUUID ? crypto.randomUUID() : `v${Date.now()}${Math.random().toString(16).slice(2)}`;
+      store.set('svla-vid', id);
+      if (store.get('svla-vid') !== id) return; // storage is blocked: skip rather than count every load as a new person
+    }
+    const key = `svla-visit-${page}`;
+    if (Date.now() - Number(store.get(key) || 0) < 30 * 60 * 1000) return;
+    store.set(key, String(Date.now()));
+    fetch('/api/visit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, page }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch { /* ignore */ }
+}
